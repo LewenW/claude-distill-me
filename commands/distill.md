@@ -1,28 +1,41 @@
 ---
 name: distill
-description: Scan your Claude data and distill behavioral patterns into a personal skill
+description: Synthesize all data (sessions + queue + memories) into your personal skill
 argument-hint: "[role]"
 ---
 
 # Distill
 
-Run the full pipeline: scan → extract → generate.
+Synthesize queued learnings + session history + memories into a personal skill.
 
 ## Steps
 
-1. Call `scan_user_data()`. This collects session logs, memory files, CLAUDE.md, memory-bridge data, and claude.ai exports.
+1. Call `scan_user_data()`. This collects:
+   - Session logs (last 30 days)
+   - Memory files
+   - CLAUDE.md rules
+   - memory-bridge shared data
+   - claude.ai exports
+   - **Real-time learning queue** (corrections, preferences, feedback captured by hooks)
 
-2. Analyze the returned data. Extract three pattern types:
-   - **Judgment** — decisions, accept/reject patterns, risk tolerance, trade-offs
+2. Analyze ALL data. The queued learnings are high-signal — weight them heavily.
+
+   Extract patterns using this structure for EACH pattern:
+   - **Pattern**: concise, actionable statement
+   - **Evidence**: specific quote or behavior from the data
+   - **Confidence**: high / medium / low
+
+   Three categories:
+   - **Judgment** — decisions, accept/reject, risk tolerance, trade-offs
    - **Style** — message length, tone, language, formatting, correction phrasing
    - **Priorities** — task types, delegation, recurring concerns, tools favored
 
-   Cite evidence. Be specific, not generic. "Prefers 3-bullet summaries" beats "likes brevity".
+   Aim for 8-15 patterns per category. Be specific, not generic.
 
 3. Call `save_extracted_patterns()` with three markdown strings.
 
-4. Call `generate_personal_skill()`. Pass the `role` argument if the user specified one (e.g. "pm").
+4. Call `generate_personal_skill()`. Pass the `role` argument if specified.
 
-5. Show the user 3-5 most distinctive patterns found. Ask if anything is wrong or missing.
+5. Show 5-8 most distinctive patterns. Ask if anything is wrong or missing.
 
-Output lands in `skills/enhanced-self/SKILL.md`. Re-run anytime to update.
+Output: `skills/enhanced-self/SKILL.md`. Re-run anytime to update with new data.

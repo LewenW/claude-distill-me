@@ -6,6 +6,7 @@ from mcp.server.fastmcp import FastMCP
 
 from plus_me.scanner import DataScanner
 from plus_me.extractor import prepare_for_analysis
+from plus_me.queue import load_queue, queue_stats
 from plus_me.generator import (
     available_roles,
     generate_skill,
@@ -15,15 +16,20 @@ from plus_me.generator import (
 )
 
 _INSTRUCTIONS = """\
-You have Plus-Me, a personal skill distillation tool.
+You have Plus-Me, a continuous learning tool for personal skill distillation.
 
-It scans your Claude data (session logs, memory files, CLAUDE.md, \
-memory-bridge namespaces, claude.ai exports) to learn how you think \
-and communicate. It generates a personal SKILL.md that makes Claude \
-work more like you.
+Plus-Me learns from you in two ways:
+1. **Real-time**: Hooks capture corrections, preferences, and feedback from \
+every message you send (stored in a learning queue)
+2. **On-demand**: /plus-me:distill scans session history + queued learnings \
+to extract deep behavioral patterns
 
-Flow: scan_user_data() → analyze the output → save_extracted_patterns() \
-→ generate_personal_skill().
+The learning queue accumulates signals over time. Each /distill run \
+synthesizes all available data (queue + sessions + memories) into a \
+personal SKILL.md that makes Claude work more like you.
+
+Flow: scan_user_data() → analyze → save_extracted_patterns() → \
+generate_personal_skill().
 """
 
 mcp = FastMCP("plus-me", instructions=_INSTRUCTIONS)
@@ -31,15 +37,25 @@ mcp = FastMCP("plus-me", instructions=_INSTRUCTIONS)
 
 @mcp.tool()
 def scan_user_data() -> str:
-    """Scan local Claude data and return structured content for pattern analysis.
+    """Scan local Claude data + learning queue for pattern analysis.
 
-    Reads session logs, memory files, CLAUDE.md rules, memory-bridge
-    namespaces, and claude.ai exports. Returns data + analysis prompts.
-    Claude does the actual pattern extraction from this output.
+    Collects session logs, memory files, CLAUDE.md rules, memory-bridge
+    namespaces, claude.ai exports, AND queued real-time learnings.
+    Returns data + analysis prompts for Claude to extract patterns.
     """
     scanner = DataScanner()
     data = scanner.collect_all()
     bundle = prepare_for_analysis(data)
+
+    # Include queued learnings
+    all_queued: list[dict] = []
+    for proj_dir in _scan_project_dirs():
+        all_queued.extend(load_queue(proj_dir))
+    all_queued.extend(load_queue())  # global queue
+
+    queue_section = ""
+    if all_queued:
+        queue_section = _format_queue(all_queued)
 
     stats = data.stats
     return (
@@ -52,9 +68,17 @@ def scan_user_data() -> str:
         f"**{stats['total_memories']}** memories "
         f"({stats['project_memories']} project, "
         f"{stats['bridge_memories']} bridge) | "
-        f"**{stats['total_rules']}** rule files\n\n"
+        f"**{stats['total_rules']}** rule files | "
+        f"**{len(all_queued)}** queued learnings\n\n"
         f"---\n\n"
-        f"Analyze the data below. Extract three pattern categories.\n\n"
+        f"{queue_section}"
+        f"Analyze ALL data below (including queued learnings — these are "
+        f"high-signal corrections and preferences captured in real-time). "
+        f"Extract three pattern categories. Be specific and evidence-backed.\n\n"
+        f"For each pattern, use this format:\n"
+        f"- **Pattern**: [concise statement]\n"
+        f"- **Evidence**: [specific example from the data]\n"
+        f"- **Confidence**: high/medium/low\n\n"
         f"## 1. Judgment Patterns\n\n{bundle.judgment_prompt}\n\n"
         f"## 2. Communication Style\n\n{bundle.style_prompt}\n\n"
         f"## 3. Work Priorities\n\n{bundle.priorities_prompt}\n"
@@ -119,16 +143,80 @@ def generate_personal_skill(
 
 @mcp.tool()
 def view_profile() -> str:
-    """View current extracted patterns."""
+    """View current extracted patterns and learning queue stats."""
     patterns = read_patterns()
-    if not patterns:
-        return "No patterns yet. Run /plus-me:distill first."
 
-    sections = []
-    for name, content in patterns.items():
-        sections.append(f"## {name.title()}\n\n{_strip_frontmatter(content)}")
+    # Gather queue stats across projects
+    total_queued = 0
+    for proj_dir in _scan_project_dirs():
+        s = queue_stats(proj_dir)
+        total_queued += s["total"]
+    global_stats = queue_stats()
+    total_queued += global_stats["total"]
 
-    return "# Your Profile\n\n" + "\n\n---\n\n".join(sections)
+    if not patterns and total_queued == 0:
+        return "No patterns or learnings yet. Run /plus-me:distill first."
+
+    parts = []
+    if patterns:
+        for name, content in patterns.items():
+            parts.append(f"## {name.title()}\n\n{_strip_frontmatter(content)}")
+
+    queue_msg = f"\n\n---\n\n**Learning queue:** {total_queued} items pending synthesis."
+    if total_queued > 0:
+        queue_msg += " Run /plus-me:distill to incorporate them."
+
+    profile = "# Your Profile\n\n" + "\n\n---\n\n".join(parts) if parts else "# No patterns extracted yet"
+    return profile + queue_msg
+
+
+@mcp.tool()
+def view_queue() -> str:
+    """View the real-time learning queue (captured corrections, preferences, feedback)."""
+    all_items: list[dict] = []
+    for proj_dir in _scan_project_dirs():
+        all_items.extend(load_queue(proj_dir))
+    all_items.extend(load_queue())
+
+    if not all_items:
+        return "Learning queue is empty. As you use Claude, corrections and preferences are captured automatically."
+
+    all_items.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+
+    lines = [f"# Learning Queue ({len(all_items)} items)\n"]
+    for item in all_items[:50]:
+        msg = item.get("message", "")[:80]
+        ltype = item.get("learning_type", "?")
+        conf = item.get("confidence", 0)
+        ts = item.get("timestamp", "")[:10]
+        lines.append(f"- [{ltype}] ({conf:.0%}) {msg} — {ts}")
+
+    if len(all_items) > 50:
+        lines.append(f"\n... and {len(all_items) - 50} more")
+
+    return "\n".join(lines)
+
+
+def _format_queue(items: list[dict]) -> str:
+    """Format queued learnings for inclusion in analysis."""
+    lines = ["## Queued Real-Time Learnings\n",
+             "These are high-signal corrections and preferences captured "
+             "from individual messages. Weight them heavily.\n"]
+    for item in items:
+        ltype = item.get("learning_type", "?")
+        conf = item.get("confidence", 0)
+        msg = item.get("message", "")
+        lines.append(f"- **[{ltype}, {conf:.0%}]** {msg}")
+    lines.append("\n---\n")
+    return "\n".join(lines)
+
+
+def _scan_project_dirs() -> list[str]:
+    """Get list of project directories that might have queues."""
+    from plus_me.config import PROJECTS_DIR
+    if not PROJECTS_DIR.exists():
+        return []
+    return [str(d) for d in PROJECTS_DIR.iterdir() if d.is_dir()]
 
 
 def _strip_frontmatter(text: str) -> str:
