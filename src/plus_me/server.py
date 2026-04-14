@@ -6,7 +6,7 @@ from mcp.server.fastmcp import FastMCP
 
 from plus_me.scanner import DataScanner
 from plus_me.extractor import prepare_for_analysis
-from plus_me.queue import load_queue, queue_stats
+from plus_me.queue import effective_confidence, load_queue, prune_stale, queue_stats
 from plus_me.generator import (
     available_roles,
     generate_skill,
@@ -47,11 +47,15 @@ def scan_user_data() -> str:
     data = scanner.collect_all()
     bundle = prepare_for_analysis(data)
 
-    # Include queued learnings
+    # Prune stale items, then collect queued learnings
+    for proj_dir in _scan_project_dirs():
+        prune_stale(proj_dir)
+    prune_stale()
+
     all_queued: list[dict] = []
     for proj_dir in _scan_project_dirs():
         all_queued.extend(load_queue(proj_dir))
-    all_queued.extend(load_queue())  # global queue
+    all_queued.extend(load_queue())
 
     queue_section = ""
     if all_queued:
@@ -148,11 +152,14 @@ def view_profile() -> str:
 
     # Gather queue stats across projects
     total_queued = 0
+    total_stale = 0
     for proj_dir in _scan_project_dirs():
         s = queue_stats(proj_dir)
         total_queued += s["total"]
+        total_stale += s.get("stale", 0)
     global_stats = queue_stats()
     total_queued += global_stats["total"]
+    total_stale += global_stats.get("stale", 0)
 
     if not patterns and total_queued == 0:
         return "No patterns or learnings yet. Run /plus-me:distill first."
@@ -162,8 +169,12 @@ def view_profile() -> str:
         for name, content in patterns.items():
             parts.append(f"## {name.title()}\n\n{_strip_frontmatter(content)}")
 
-    queue_msg = f"\n\n---\n\n**Learning queue:** {total_queued} items pending synthesis."
-    if total_queued > 0:
+    active = total_queued - total_stale
+    queue_msg = f"\n\n---\n\n**Learning queue:** {active} active items"
+    if total_stale:
+        queue_msg += f" ({total_stale} stale)"
+    queue_msg += "."
+    if active >= 10:
         queue_msg += " Run /plus-me:distill to incorporate them."
 
     profile = "# Your Profile\n\n" + "\n\n---\n\n".join(parts) if parts else "# No patterns extracted yet"
@@ -187,9 +198,9 @@ def view_queue() -> str:
     for item in all_items[:50]:
         msg = item.get("message", "")[:80]
         ltype = item.get("learning_type", "?")
-        conf = item.get("confidence", 0)
+        eff = effective_confidence(item)
         ts = item.get("timestamp", "")[:10]
-        lines.append(f"- [{ltype}] ({conf:.0%}) {msg} — {ts}")
+        lines.append(f"- [{ltype}] ({eff:.0%}) {msg} — {ts}")
 
     if len(all_items) > 50:
         lines.append(f"\n... and {len(all_items) - 50} more")
@@ -204,9 +215,9 @@ def _format_queue(items: list[dict]) -> str:
              "from individual messages. Weight them heavily.\n"]
     for item in items:
         ltype = item.get("learning_type", "?")
-        conf = item.get("confidence", 0)
+        eff = effective_confidence(item)
         msg = item.get("message", "")
-        lines.append(f"- **[{ltype}, {conf:.0%}]** {msg}")
+        lines.append(f"- **[{ltype}, {eff:.0%}]** {msg}")
     lines.append("\n---\n")
     return "\n".join(lines)
 

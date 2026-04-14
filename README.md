@@ -48,9 +48,13 @@ Between `/distill` runs, hooks automatically capture corrections, preferences, a
 |--------|---------|:---:|
 | Corrections | "no, use Python not JS" | 70-90% |
 | Explicit markers | "remember: always use type hints" | 90% |
+| Guardrails | "don't add comments unless I ask" | 85-90% |
 | Style feedback | "太啰嗦了 简短一点" | 80% |
 | Preferences | "I prefer tables over lists" | 75% |
+| Decisions | "let's go with option B" / "就用这个吧" | 65-70% |
 | Positive feedback | "perfect!" / "就是这样" | 70% |
+
+Confidence decays over time — stale learnings are pruned automatically.
 
 ## What Gets Extracted (/distill)
 

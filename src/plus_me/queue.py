@@ -87,6 +87,21 @@ STYLE_PATTERNS = [
     (r"用英文|in English|说英文", "use-english", 0.85, 120),
 ]
 
+GUARDRAIL_PATTERNS = [
+    (r"don't (?:add|include|create) .{1,40} unless", "dont-unless-asked", 0.90, 120),
+    (r"only (?:change|modify|edit) what I (?:asked|requested)", "only-what-asked", 0.90, 120),
+    (r"don't .{1,30} without asking", "dont-without-asking", 0.85, 120),
+    (r"(?:不要|别).{1,20}(?:除非|没说)", "buyao-chufei", 0.85, 120),
+    (r"只(?:改|动|碰)我(?:说的|要求的)", "zhi-gai-woshuode", 0.90, 120),
+]
+
+DECISION_PATTERNS = [
+    (r"let's go with\b|I('ll| will) go with", "go-with", 0.70, 60),
+    (r"I chose\b|I('m| am) choosing", "chose", 0.70, 60),
+    (r"我(选|决定用|选择)", "wo-xuan", 0.70, 60),
+    (r"就.{0,6}吧", "jiu-yong-ba", 0.65, 60),
+]
+
 FALSE_POSITIVE_PATTERNS = [
     r"[?\uff1f]$",
     r"[\u55ce\u5417\u5462]$",  # 嗎吗呢
@@ -97,12 +112,13 @@ FALSE_POSITIVE_PATTERNS = [
 
 MAX_CAPTURE_LENGTH = 500
 MAX_WEAK_LENGTH = 150
+MAX_QUEUE_SIZE = 200
 
 
 def detect_learning(text: str) -> Optional[Learning]:
     """Detect if a user message contains a capturable learning signal."""
     stripped = text.strip()
-    if len(stripped) <= 3:
+    if len(stripped) <= 1:
         return None
 
     # Explicit markers always capture
@@ -111,6 +127,19 @@ def detect_learning(text: str) -> Optional[Learning]:
             return Learning(
                 message=stripped,
                 learning_type="explicit",
+                confidence=confidence,
+                extracted=stripped,
+                patterns=name,
+                sentiment="correction",
+                decay_days=decay,
+            )
+
+    # Guardrail patterns (high signal — user setting boundaries)
+    for pattern, name, confidence, decay in GUARDRAIL_PATTERNS:
+        if re.search(pattern, stripped, re.IGNORECASE):
+            return Learning(
+                message=stripped,
+                learning_type="guardrail",
                 confidence=confidence,
                 extracted=stripped,
                 patterns=name,
@@ -166,6 +195,19 @@ def detect_learning(text: str) -> Optional[Learning]:
                 decay_days=decay,
             )
 
+    # Decision signals
+    for pattern, name, confidence, decay in DECISION_PATTERNS:
+        if re.search(pattern, stripped, re.IGNORECASE):
+            return Learning(
+                message=stripped,
+                learning_type="decision",
+                confidence=confidence,
+                extracted=stripped,
+                patterns=name,
+                sentiment="neutral",
+                decay_days=decay,
+            )
+
     # Correction patterns
     matched = []
     has_strong = False
@@ -204,6 +246,23 @@ def detect_learning(text: str) -> Optional[Learning]:
     return None
 
 
+def effective_confidence(item: dict) -> float:
+    """Compute confidence adjusted for age. Items decay toward 0 over decay_days."""
+    base = item.get("confidence", 0.5)
+    decay_days = item.get("decay_days", 90)
+    ts = item.get("timestamp", "")
+    if not ts or decay_days <= 0:
+        return base
+    try:
+        created = datetime.fromisoformat(ts)
+        age = (datetime.now(timezone.utc) - created).days
+        if age >= decay_days:
+            return 0.0
+        return base * (1 - age / decay_days)
+    except (ValueError, TypeError):
+        return base
+
+
 def load_queue(project_dir: Optional[str] = None) -> list[dict]:
     path = _queue_path(project_dir)
     if not path.exists():
@@ -224,13 +283,29 @@ def append_learning(learning: Learning, project_dir: Optional[str] = None) -> No
     learning.project = project_dir or ""
     items = load_queue(project_dir)
     items.append(asdict(learning))
+    if len(items) > MAX_QUEUE_SIZE:
+        items.sort(key=effective_confidence)
+        items = items[len(items) - MAX_QUEUE_SIZE :]
     save_queue(items, project_dir)
+
+
+def prune_stale(project_dir: Optional[str] = None) -> int:
+    """Remove items whose confidence has decayed to zero. Returns count removed."""
+    items = load_queue(project_dir)
+    before = len(items)
+    items = [i for i in items if effective_confidence(i) > 0]
+    if len(items) < before:
+        save_queue(items, project_dir)
+    return before - len(items)
 
 
 def queue_stats(project_dir: Optional[str] = None) -> dict:
     items = load_queue(project_dir)
     by_type: dict[str, int] = {}
+    stale = 0
     for item in items:
         t = item.get("learning_type", "unknown")
         by_type[t] = by_type.get(t, 0) + 1
-    return {"total": len(items), "by_type": by_type}
+        if effective_confidence(item) <= 0:
+            stale += 1
+    return {"total": len(items), "by_type": by_type, "stale": stale}

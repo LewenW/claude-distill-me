@@ -6,11 +6,12 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
 
-from plus_me.queue import queue_stats
+from plus_me.queue import prune_stale, queue_stats
 
 
 def main() -> int:
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
+    pruned = prune_stale(project_dir)
     stats = queue_stats(project_dir)
 
     if stats["total"] == 0:
@@ -20,10 +21,12 @@ def main() -> int:
     parts = [f"{v} {k}" for k, v in sorted(by_type.items())]
     summary = ", ".join(parts)
 
-    print(
-        f"[plus-me] {stats['total']} learnings queued ({summary}). "
-        f"Run /plus-me:distill to synthesize into your personal skill."
-    )
+    msg = f"[plus-me] {stats['total']} learnings queued ({summary})."
+    if pruned:
+        msg += f" ({pruned} stale items pruned.)"
+    if stats["total"] >= 10:
+        msg += " Run /plus-me:distill to synthesize."
+    print(msg)
     return 0
 
 

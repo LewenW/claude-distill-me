@@ -36,6 +36,7 @@ Aim for 8-15 patterns per category. More is better than fewer, as long as each i
 - Risk tolerance (conservative vs aggressive)
 - Quality vs speed trade-offs
 - How they triage bug reports or reviews
+- Guardrails set on AI behavior ("don't X unless", "only do what I asked")
 
 ### Style — look for:
 - Language code-switching patterns (Chinese/English/mixed)
@@ -54,6 +55,18 @@ Aim for 8-15 patterns per category. More is better than fewer, as long as each i
 ## Queued Learnings are High Signal
 
 Items in the learning queue were captured in real-time from actual corrections and preferences. They represent the user's most explicit signals. Weight them more heavily than inferred patterns from session history.
+
+Before extracting, validate each queued item:
+- Filter out one-time instructions (not generalizable)
+- Resolve contradictions (keep the more recent signal)
+- Note the effective confidence (decays over time)
+
+## Contradiction Detection
+
+When extracting patterns, check for internal contradictions:
+- Two patterns giving opposite advice on the same topic
+- New queue items that override older patterns
+- Keep the most recent, evidence-backed version
 
 ## After Distillation
 
