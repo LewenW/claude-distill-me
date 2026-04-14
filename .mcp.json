@@ -1,0 +1,9 @@
+{
+  "plus-me": {
+    "command": "python",
+    "args": ["-m", "plus_me.server"],
+    "env": {
+      "PYTHONPATH": "${CLAUDE_PLUGIN_ROOT}/src"
+    }
+  }
+}

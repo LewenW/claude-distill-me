@@ -1,0 +1,18 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "claude-plus-me"
+version = "0.1.0"
+description = "Distill your Claude data into a personal skill"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "wanglewe" }]
+dependencies = ["mcp>=1.0.0"]
+
+[project.scripts]
+plus-me = "plus_me.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/plus_me"]
