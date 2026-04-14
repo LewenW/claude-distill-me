@@ -8,7 +8,4 @@ build/
 .claude/
 output/patterns/*.md
 output/patterns-backups/
-*.lock
-Plus_Me_Research_v2.md
 skills/enhanced-self/SKILL.md
-import/

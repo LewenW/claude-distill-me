@@ -1,73 +1,56 @@
 ---
 name: self-distill
-description: Guides Distill-Me continuous learning and distillation. Activates when user wants to create/update their personal skill or when Distill-Me tools are used.
-version: 0.2.0
+description: Guides deep behavioral distillation — three-layer extraction of decision patterns, personality, and values.
 ---
 
-# Distill-Me Continuous Learning Guide
+# Deep Distillation Guide
 
-## Two Learning Layers
+## Three-Layer Extraction
 
-### Real-Time (Automatic)
-UserPromptSubmit hook captures corrections, preferences, and feedback from every message. These are queued as structured learning items with confidence scores.
+Every pattern category uses the same depth progression:
 
-### On-Demand (/distill)
-Full synthesis: queue + session history + memories → patterns → SKILL.md.
-
-## When to Suggest Distillation
-
-- Queue has 10+ items (check with view_queue)
-- User asks to "learn me" or "understand my style"
-- User wants a personal skill or personalized agent
-- Last distill was over a week ago
+**Layer 1 — Observable:** Direct evidence from the data. What did they literally say or do?
+**Layer 2 — Interpretive:** What do the patterns imply? Read between the lines.
+**Layer 3 — Contrastive:** What makes this person DIFFERENT? What would surprise you?
 
 ## Extraction Quality Standards
 
 Each pattern MUST have:
-- **Pattern**: concise, actionable ("Prefers 3-bullet summaries" not "likes brevity")
-- **Evidence**: specific quote or behavior from the data
+- **Pattern**: When [situation], this user [behavior] because [underlying reason]
+- **Evidence**: specific quote or concrete behavior from the data
 - **Confidence**: high / medium / low
+- **Depth**: surface / interpretive / deep
 
-Aim for 8-15 patterns per category. More is better than fewer, as long as each is evidence-backed.
+Bad pattern: "Prefers short messages"
+Good pattern: "Uses 2-5 word commands for routine tasks but switches to detailed paragraphs when stakes are high — the message length IS the priority signal"
 
-### Judgment — look for:
-- Accept/reject patterns on suggestions
-- How they handle ambiguity (ask vs assume)
-- Risk tolerance (conservative vs aggressive)
-- Quality vs speed trade-offs
-- How they triage bug reports or reviews
-- Guardrails set on AI behavior ("don't X unless", "only do what I asked")
+Bad pattern: "Uses Chinese and English"
+Good pattern: "Thinks in Chinese but keeps technical terms in English. Code-switches mid-sentence. The ratio of Chinese to English tracks their emotional engagement — more Chinese = more invested"
 
-### Style — look for:
-- Language code-switching patterns (Chinese/English/mixed)
-- Message length distribution (short commands vs detailed briefs)
-- Formatting preferences (tables, bullets, code blocks, prose)
-- Correction phrasing patterns
-- Tone (formal, casual, playful, direct)
+## Decision-Making — Look For:
+- Accept/reject patterns on AI suggestions
+- Implicit decision frameworks (data-driven? gut? speed-first?)
+- How they handle ambiguity (ask vs assume vs demand opinion)
+- Risk calibration (ship fast vs polish) and when it shifts
+- Guardrails and what past experiences they reveal
+- Trust architecture: what triggers verification vs delegation?
 
-### Priorities — look for:
-- Task types initiated most often
-- What gets corrected or pushed back on
-- What gets skipped or accepted without review
-- Recurring themes and tools across sessions
-- Ship cadence and quality bar
+## Communication — Look For:
+- Message length as a function of context (not just "short" or "long")
+- Language mixing rules (which language for what, and why)
+- Relationship with AI (peer? tool? how does this shift?)
+- Emotional register triggers (excitement, frustration, dismissal)
+- What they HATE in output and what that hatred reveals
+- Gap between their own style and their expectations for AI output
 
-## Queued Learnings are High Signal
+## Values — Look For:
+- Revealed preferences vs stated preferences (where they diverge)
+- What they spend attention on that most people in their role wouldn't
+- What they skip that most people wouldn't skip
+- Values hierarchy: when two priorities conflict, which wins?
+- Root values driving surface decisions (usually 1-2 core values)
+- Meta-cognition: how they learn, handle their own mistakes
 
-Items in the learning queue were captured in real-time from actual corrections and preferences. They represent the user's most explicit signals. Weight them more heavily than inferred patterns from session history.
+## After Extraction
 
-Before extracting, validate each queued item:
-- Filter out one-time instructions (not generalizable)
-- Resolve contradictions (keep the more recent signal)
-- Note the effective confidence (decays over time)
-
-## Contradiction Detection
-
-When extracting patterns, check for internal contradictions:
-- Two patterns giving opposite advice on the same topic
-- New queue items that override older patterns
-- Keep the most recent, evidence-backed version
-
-## After Distillation
-
-Let the user review. User corrections to the generated patterns are themselves high-quality learnings — incorporate them immediately.
+User corrections to generated patterns are the highest-quality signal. If they say "that's wrong" or "that's not why", the correction reveals more about them than the original data did. Incorporate immediately.

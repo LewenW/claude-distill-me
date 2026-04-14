@@ -1,4 +1,8 @@
-"""Prepare user data and analysis prompts for Claude to extract patterns."""
+"""Deep behavioral extraction prompts.
+
+Three-layer analysis: Observable → Interpretive → Contrastive.
+Each layer builds on the previous, extracting increasingly deep patterns.
+"""
 
 from __future__ import annotations
 
@@ -8,19 +12,16 @@ from distill_me.scanner import UserData
 
 @dataclass
 class AnalysisBundle:
-    """Data + prompts ready for Claude to analyze. Not the patterns themselves."""
+    """Data + deep extraction prompts for Claude to analyze."""
     data_summary: str
     judgment_prompt: str
     style_prompt: str
     priorities_prompt: str
 
 
-def _format_turns(data: UserData, max_turns: int = 80, queued_messages: set[str] | None = None) -> str:
+def _format_turns(data: UserData, max_turns: int = 80) -> str:
     lines: list[str] = []
     for i, turn in enumerate(data.turns[:max_turns]):
-        # Skip turns already captured in the learning queue
-        if queued_messages and _msg_key(turn.user_message) in queued_messages:
-            continue
         lines.append(f"--- Turn {i+1} [project: {turn.project}] ---")
         lines.append(f"USER: {turn.user_message}")
         lines.append(f"ASSISTANT: {turn.assistant_message}")
@@ -52,19 +53,9 @@ def _format_rules(data: UserData) -> str:
     return "\n\n".join(data.claude_md_rules)
 
 
-def _msg_key(msg: str) -> str:
-    """Normalize message for dedup comparison. Strips whitespace, lowercases."""
-    return msg.strip().lower()
-
-
-def prepare_for_analysis(data: UserData, queued_messages: list[str] | None = None) -> AnalysisBundle:
-    """Build the data summary and analysis prompts. Claude does the actual extraction.
-
-    queued_messages: message strings already in the learning queue.
-    Turns matching these are excluded to avoid double-weighting.
-    """
-    queued_set = {_msg_key(m) for m in queued_messages} if queued_messages else None
-    turns_text = _format_turns(data, queued_messages=queued_set)
+def prepare_for_analysis(data: UserData) -> AnalysisBundle:
+    """Build data summary and deep extraction prompts."""
+    turns_text = _format_turns(data)
     memories_text = _format_memories(data)
     rules_text = _format_rules(data)
 
@@ -80,66 +71,131 @@ def prepare_for_analysis(data: UserData, queued_messages: list[str] | None = Non
         f"### CLAUDE.md Rules\n\n{rules_text}"
     )
 
-    # Prompts reference the data by section header — the data is included
-    # once in the server's scan_user_data() output, not repeated per prompt.
-    judgment_prompt = (
-        "Extract this user's **decision-making and judgment patterns** "
-        "from the Collected Data above.\n\n"
-        "Go beyond surface preferences. Look for HOW they think:\n"
-        "- When presented with options, how do they choose? (data-driven? gut? "
-        "speed-first? quality-first?)\n"
-        "- What do they accept without pushback vs what triggers corrections?\n"
-        "- How do they handle ambiguity — do they ask, assume, or demand your "
-        "honest opinion?\n"
-        "- Risk tolerance: do they ship fast and iterate, or polish before release?\n"
-        "- Scope decisions: what gets cut and what's non-negotiable?\n"
-        "- Guardrails: what have they explicitly told Claude NOT to do?\n"
-        "- Quality bar: what triggers 'this isn't good enough'?\n"
-        "- When do they trust external input (e.g. claude.ai reviews) vs verify "
-        "themselves?\n\n"
-        "Format each pattern as:\n"
-        "- **Pattern**: When [situation], this user [specific behavior].\n"
-        "- **Evidence**: [direct quote or specific example from the data]\n"
-        "- **Confidence**: high/medium/low\n\n"
-        "Aim for 8-15 patterns. Every pattern must be specific enough that "
-        "another person reading it would change their behavior."
-    )
+    # --- DEEP EXTRACTION PROMPTS ---
+    # Three-layer analysis per category:
+    #   Layer 1 (Observable): what you can directly see in the data
+    #   Layer 2 (Interpretive): what the patterns imply about deeper traits
+    #   Layer 3 (Contrastive): what makes this user DIFFERENT from most people
 
-    style_prompt = (
-        "Extract this user's **communication and output style** "
-        "from the Collected Data above.\n\n"
-        "Look for patterns that would let you replicate their voice:\n"
-        "- Message length distribution — are they a 2-word person or "
-        "paragraph-writer?\n"
-        "- Language mixing — which language for what context? Which technical "
-        "terms stay in English?\n"
-        "- Tone — formal, casual, playful, blunt, self-deprecating?\n"
-        "- How they phrase corrections — direct ('no, X') vs indirect "
-        "('actually, maybe Y')?\n"
-        "- What they hate in output — banned words, AI-sounding phrases, "
-        "excessive explanation?\n"
-        "- Formatting preferences — tables vs bullets vs prose? When?\n"
-        "- How they request work — short commands ('推') vs detailed briefs?\n"
-        "- Response expectations — do they want summaries or just action?\n\n"
-        "Include direct quotes. Patterns should be specific enough to "
-        "reproduce the user's voice in writing."
-    )
+    judgment_prompt = """\
+Extract this user's **decision-making patterns and cognitive DNA**.
 
-    priorities_prompt = (
-        "Extract this user's **work priorities and focus areas** "
-        "from the Collected Data above.\n\n"
-        "Look for what drives their decisions day-to-day:\n"
-        "- What task types do they initiate most? What do they never start?\n"
-        "- What do they delegate to Claude vs do themselves?\n"
-        "- What gets reviewed carefully vs rubber-stamped?\n"
-        "- What recurring themes or concerns appear across sessions?\n"
-        "- What tools, frameworks, or platforms do they keep coming back to?\n"
-        "- Ship cadence — fast daily deploys or careful weekly releases?\n"
-        "- What external metrics matter to them (stars, downloads, user "
-        "feedback)?\n"
-        "- What do they deprioritize or explicitly skip?\n\n"
-        "Group by theme. Each pattern needs evidence."
-    )
+### Layer 1: Observable Decisions
+Catalog concrete decisions from the data:
+- What do they accept without pushback vs correct or reject?
+- What scope choices do they make? What gets cut, what's sacred?
+- What guardrails have they set on AI behavior?
+- When presented with options, which do they pick and how fast?
+
+### Layer 2: Underlying Frameworks
+Interpret WHAT the decisions reveal about HOW they think:
+- What implicit decision framework are they using? (evidence-driven? \
+intuition? speed-first? correctness-first?)
+- Risk calibration: do they ship and iterate, or polish before release? \
+Where on this spectrum and does it shift by context?
+- Ambiguity response: when something is unclear, do they ask, assume, \
+research, or demand your honest opinion?
+- Trust architecture: what do they verify themselves vs delegate? What \
+triggers distrust?
+- Quality threshold: what makes them say "this isn't good enough" vs \
+"good enough, ship it"?
+
+### Layer 3: Contrastive Analysis
+Find what's UNIQUE about this person's reasoning:
+- What does this user do DIFFERENTLY from most Claude users when making \
+decisions?
+- What do their guardrails reveal about past bad experiences?
+- What contradictions exist in their decision patterns, and what do those \
+contradictions reveal about their actual priorities?
+- If you had to predict their reaction to a new situation, what mental \
+model would you use?
+
+Format each pattern as:
+- **Pattern**: When [situation], this user [specific behavior] because \
+[underlying reason].
+- **Evidence**: [direct quote or specific example]
+- **Confidence**: high/medium/low
+- **Depth**: surface / interpretive / deep
+
+Extract 10-20 patterns across all three layers. Go beyond "they prefer X" \
+— explain WHY they prefer X and what it reveals about how they think."""
+
+    style_prompt = """\
+Extract this user's **communication patterns and personality signature**.
+
+### Layer 1: Observable Voice
+Map the surface-level communication patterns:
+- Message length distribution — 2-word commands or paragraph briefs?
+- Language patterns — which language for what? Which terms stay in English?
+- Formatting habits — tables, bullets, code blocks, prose? When each?
+- Correction style — direct ("no, X") or indirect ("actually, maybe Y")?
+- Request style — terse commands or detailed specifications?
+
+### Layer 2: Personality Through Communication
+Read between the lines for personality traits:
+- Relationship with AI — peer? tool? subordinate? Does this shift by task?
+- Emotional register — when do they get excited, frustrated, dismissive, \
+playful? What triggers each?
+- Feedback patterns — do they praise? How? What does silence mean?
+- Information density preference — do they want summaries or raw data? \
+Context or just answers?
+- What they HATE in output — not just banned words, but what kind of \
+thinking produces output they reject?
+
+### Layer 3: Contrastive Voice Analysis
+Find what makes this person's voice unmistakable:
+- What would be the WORST way to communicate with this user? (This \
+defines their style by negation)
+- If you had to write a message AS this person, what would feel wrong to \
+include? What would be missing if left out?
+- What's the gap between how they write and how they want YOU to write? \
+(They may be terse but expect thorough output, or verbose but want \
+brevity from you)
+- How does their communication style differ from their stated preferences?
+
+Format each pattern with evidence and confidence. Include direct quotes \
+where possible. Patterns should be specific enough that someone reading \
+them could successfully imitate this user's voice."""
+
+    priorities_prompt = """\
+Extract this user's **values hierarchy and work philosophy**.
+
+### Layer 1: Observable Focus
+Map what they actually spend time on:
+- Task types initiated most frequently
+- What they delegate to AI vs do themselves
+- What gets reviewed carefully vs rubber-stamped
+- Tools, frameworks, platforms they keep returning to
+- Ship cadence — daily deploys or careful releases?
+
+### Layer 2: Underlying Values
+Interpret what the focus patterns reveal:
+- What do they optimize for that they never explicitly state?
+- What recurring frustrations hint at deeper concerns?
+- What's their implicit theory of quality? Of productivity? Of success?
+- When two priorities conflict, which consistently wins?
+- What do they spend energy on that most people in their role wouldn't?
+- What do they skip that most people in their role wouldn't skip?
+
+### Layer 3: Contrastive Values
+Find what's uniquely important to this person:
+- What do they care about that most users don't?
+- If forced to sacrifice one value for another, which survives? Build a \
+rough hierarchy.
+- What's the connecting theme across their disparate decisions? (There's \
+usually one or two root values driving everything)
+- What would they never compromise on even under pressure?
+- How do their stated priorities differ from their revealed priorities \
+(based on where they actually spend attention)?
+
+### Meta-Cognition (if enough data)
+- How do they learn new things? Jump in and iterate, or study first?
+- How do they respond to their own mistakes vs others' mistakes?
+- What triggers them to step back and rethink vs push forward?
+
+Format each pattern with evidence and confidence. Group by theme. Every \
+pattern should answer "so what?" — why does this matter for how I should \
+work with this person?"""
 
     return AnalysisBundle(
         data_summary=data_summary,

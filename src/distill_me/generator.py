@@ -1,11 +1,18 @@
-"""Generate personal SKILL.md from extracted patterns + installed skills."""
+"""Generate personal SKILL.md from extracted patterns + optional role fusion."""
 
 from __future__ import annotations
 
 from pathlib import Path
 from datetime import datetime, timezone
 
-from distill_me.config import ENHANCED_SKILL_DIR, PATTERNS_DIR, PLUGINS_DIR, ROLE_TEMPLATES_DIR
+from distill_me.config import (
+    CLAUDE_MD_END,
+    CLAUDE_MD_START,
+    ENHANCED_SKILL_DIR,
+    GLOBAL_CLAUDE_MD,
+    PATTERNS_DIR,
+    ROLE_TEMPLATES_DIR,
+)
 
 
 def _ensure_dir(p: Path) -> None:
@@ -20,89 +27,20 @@ def _strip_frontmatter(text: str) -> str:
     return text.strip()
 
 
-def scan_installed_skills() -> dict[str, Path]:
-    """Find all installed Cowork plugin skills. Returns {name: path}.
-
-    Disambiguates duplicate names by prefixing with the parent plugin
-    directory (e.g. "plugin-a/access" vs "plugin-b/access").
-    """
-    raw: list[tuple[str, Path]] = []
-    if not PLUGINS_DIR.exists():
-        return {}
-    for skill_md in PLUGINS_DIR.rglob("SKILL.md"):
-        try:
-            first_lines = skill_md.read_text(encoding="utf-8")[:500]
-            for line in first_lines.splitlines():
-                if line.startswith("name:"):
-                    name = line.partition(":")[2].strip()
-                    if name:
-                        raw.append((name, skill_md))
-                    break
-        except OSError:
-            continue
-
-    # Detect duplicates and disambiguate with plugin name prefix
-    seen: dict[str, int] = {}
-    for name, _ in raw:
-        seen[name] = seen.get(name, 0) + 1
-
-    results: dict[str, Path] = {}
-    for name, path in raw:
-        if seen[name] > 1:
-            # Walk up from SKILL.md to find the plugin directory name
-            # e.g. .../external_plugins/discord/skills/access/SKILL.md → "discord"
-            plugin_name = _find_plugin_name(path)
-            key = f"{plugin_name}/{name}"
-        else:
-            key = name
-        results[key] = path
-    return results
-
-
-def _find_plugin_name(skill_path: Path) -> str:
-    """Extract the plugin directory name from a SKILL.md path.
-
-    Walks up looking for a 'skills' directory, then goes one level above it.
-    """
-    for parent in skill_path.parents:
-        if parent.name == "skills" and parent.parent.name != "":
-            return parent.parent.name
-    return skill_path.parent.name
-
-
 def load_role_template(role: str) -> str | None:
-    """Load a role template by name — checks built-in templates first,
-    then installed Cowork skills. Returns None if ambiguous (multiple matches)."""
     path = ROLE_TEMPLATES_DIR / f"{role}.md"
     if path.exists():
         return path.read_text(encoding="utf-8")
-
-    installed = scan_installed_skills()
-    # Exact match first
-    if role in installed:
-        content = installed[role].read_text(encoding="utf-8")
-        return _strip_frontmatter(content)
-    # Fuzzy match — only if exactly one hit
-    matches = [(n, p) for n, p in installed.items() if role.lower() in n.lower()]
-    if len(matches) == 1:
-        content = matches[0][1].read_text(encoding="utf-8")
-        return _strip_frontmatter(content)
     return None
 
 
 def available_roles() -> list[str]:
-    """List available role templates + installed Cowork skills."""
-    roles = []
-    if ROLE_TEMPLATES_DIR.exists():
-        roles.extend(f.stem for f in ROLE_TEMPLATES_DIR.glob("*.md"))
-
-    installed = scan_installed_skills()
-    roles.extend(sorted(installed.keys()))
-    return roles
+    if not ROLE_TEMPLATES_DIR.exists():
+        return []
+    return [f.stem for f in ROLE_TEMPLATES_DIR.glob("*.md")]
 
 
 def _backup_patterns() -> Path | None:
-    """Copy existing patterns to a timestamped backup dir. Returns backup path."""
     if not PATTERNS_DIR.exists():
         return None
     existing = list(PATTERNS_DIR.glob("*.md"))
@@ -118,25 +56,22 @@ def _backup_patterns() -> Path | None:
 
 
 def save_patterns(judgment: str, style: str, priorities: str) -> dict:
-    """Save extracted patterns to output/patterns/ directory.
-
-    Backs up existing patterns before overwriting.
-    """
+    """Save extracted patterns. Backs up existing patterns first."""
     backup = _backup_patterns()
     _ensure_dir(PATTERNS_DIR)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     files = {
         "judgment.md": (
-            f"---\nname: Judgment Patterns\ndescription: How this user makes decisions\n"
+            f"---\nname: Judgment Patterns\ndescription: Decision-making and cognitive patterns\n"
             f"type: judgment\nupdated: {now}\n---\n\n{judgment}"
         ),
         "style.md": (
-            f"---\nname: Communication Style\ndescription: How this user communicates and formats output\n"
+            f"---\nname: Communication Style\ndescription: Voice, personality, and communication patterns\n"
             f"type: style\nupdated: {now}\n---\n\n{style}"
         ),
         "priorities.md": (
-            f"---\nname: Work Priorities\ndescription: What this user focuses on and cares about\n"
+            f"---\nname: Work Priorities\ndescription: Values hierarchy and work philosophy\n"
             f"type: priorities\nupdated: {now}\n---\n\n{priorities}"
         ),
     }
@@ -153,7 +88,6 @@ def save_patterns(judgment: str, style: str, priorities: str) -> dict:
 
 
 def read_patterns() -> dict[str, str] | None:
-    """Read existing patterns from output/patterns/. Returns None if not found."""
     if not PATTERNS_DIR.exists():
         return None
 
@@ -180,8 +114,10 @@ def generate_skill(
         if template:
             role_section = (
                 f"\n## Role Enhancement: {role.upper()}\n\n"
-                f"Incorporate these industry best practices while maintaining "
-                f"the user's personal style:\n\n{template}\n"
+                f"Apply these best practices, filtered through the user's "
+                f"personal style above. Personal patterns take priority — "
+                f"adapt the practices to fit the person, not the reverse.\n\n"
+                f"{template}\n"
             )
 
     custom_section = ""
@@ -190,35 +126,65 @@ def generate_skill(
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-    skill_content = f"""---
+    return f"""---
 name: enhanced-self
-description: User's personal behavioral patterns (judgment, style, priorities). Use when writing code, drafting messages, making decisions, or reviewing work for this user.
-when_to_use: When drafting emails, writing documents, making decisions, reviewing work, or doing any task on behalf of the user. When the user asks you to act as them or match their style.
+description: Deep behavioral patterns — decision-making, cognitive habits, communication style, values. Use when acting on behalf of this user.
+when_to_use: When drafting, coding, deciding, reviewing, or doing any task as/for this user. Match their thinking, not just their preferences.
 ---
 
-# Your User's Personal Patterns
+# Your User's Behavioral DNA
 
-Auto-generated by Distill-Me on {now}. When acting on behalf of this user, follow these patterns. Maintain the user's voice — output should feel like it came from them.
+Generated by Distill-Me on {now}. These patterns go beyond preferences — \
+they capture how this user thinks, decides, and communicates. When acting \
+on their behalf, embody these patterns. Output should feel like it came \
+from them.
 
-## Decision-Making & Judgment
+## Decision-Making & Cognitive Patterns
 
 {judgment}
 
-## Communication & Output Style
+## Communication & Personality
 
 {style}
 
-## Work Priorities & Focus Areas
+## Values & Work Philosophy
 
 {priorities}
 {role_section}{custom_section}"""
 
-    return skill_content
-
 
 def save_skill(skill_content: str) -> str:
-    """Save generated skill to skills/enhanced-self/SKILL.md."""
     _ensure_dir(ENHANCED_SKILL_DIR)
     path = ENHANCED_SKILL_DIR / "SKILL.md"
     path.write_text(skill_content, encoding="utf-8")
     return str(path)
+
+
+def inject_into_claude_md(skill_content: str) -> str:
+    """Inject generated skill into ~/.claude/CLAUDE.md between markers.
+
+    Creates the file if it doesn't exist. Updates the marked section
+    if it already exists. Preserves all other content.
+    """
+    stripped = _strip_frontmatter(skill_content)
+    injection = f"{CLAUDE_MD_START}\n{stripped}\n{CLAUDE_MD_END}"
+
+    if GLOBAL_CLAUDE_MD.exists():
+        existing = GLOBAL_CLAUDE_MD.read_text(encoding="utf-8")
+        start_idx = existing.find(CLAUDE_MD_START)
+        end_idx = existing.find(CLAUDE_MD_END)
+
+        if start_idx != -1 and end_idx != -1:
+            new_content = (
+                existing[:start_idx]
+                + injection
+                + existing[end_idx + len(CLAUDE_MD_END):]
+            )
+        else:
+            new_content = existing.rstrip() + "\n\n" + injection + "\n"
+    else:
+        GLOBAL_CLAUDE_MD.parent.mkdir(parents=True, exist_ok=True)
+        new_content = injection + "\n"
+
+    GLOBAL_CLAUDE_MD.write_text(new_content, encoding="utf-8")
+    return str(GLOBAL_CLAUDE_MD)

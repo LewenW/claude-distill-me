@@ -1,4 +1,4 @@
-"""Scan ~/.claude for user data: session logs, memory files, CLAUDE.md, exports."""
+"""Scan ~/.claude for user data: session logs, memory files, CLAUDE.md."""
 
 from __future__ import annotations
 
@@ -9,17 +9,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from distill_me.config import (
-    CLAUDE_HOME,
     EXCLUDE_PROJECTS,
-    EXPORT_DIR,
     GLOBAL_CLAUDE_MD,
     MAX_MESSAGE_CHARS,
     MAX_SESSIONS,
     MAX_TOTAL_TURNS,
     MAX_TURNS_PER_SESSION,
     PROJECTS_DIR,
-    SHARED_MEMORY_DIR,
     SCAN_DAYS,
+    SHARED_MEMORY_DIR,
 )
 
 
@@ -74,9 +72,8 @@ def _truncate(s: str, limit: int = MAX_MESSAGE_CHARS) -> str:
 def _extract_text(content, role: str = "user") -> str:
     """Extract readable text from message content blocks.
 
-    For assistant messages, tool_use/tool_result blocks are collapsed to
-    a count (e.g. "[used 3 tools]") to reduce noise in pattern analysis.
-    User messages keep all text verbatim.
+    Assistant tool_use/tool_result blocks collapse to a count
+    to reduce noise in pattern analysis.
     """
     if isinstance(content, str):
         return content
@@ -99,7 +96,6 @@ def _extract_text(content, role: str = "user") -> str:
 
 
 def _is_excluded(dir_name: str) -> bool:
-    """Check if a project directory is in the exclusion list."""
     if not EXCLUDE_PROJECTS:
         return False
     return any(excl in dir_name for excl in EXCLUDE_PROJECTS)
@@ -203,7 +199,6 @@ class DataScanner:
         return entries
 
     def scan_memory_bridge(self) -> list[MemoryEntry]:
-        """Read shared memories from memory-bridge namespaces."""
         if not SHARED_MEMORY_DIR.exists():
             return []
 
@@ -219,66 +214,6 @@ class DataScanner:
                     entries.append(entry)
 
         return entries
-
-    def scan_exported_chats(self) -> list[Turn]:
-        """Read claude.ai exported JSON from the plugin's import/ directory."""
-        if not EXPORT_DIR.exists():
-            return []
-
-        turns: list[Turn] = []
-        for json_file in sorted(EXPORT_DIR.glob("*.json"), reverse=True):
-            try:
-                data = json.loads(json_file.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError):
-                continue
-
-            chat_turns = self._parse_export_file(data, json_file.stem)
-            turns.extend(chat_turns)
-
-        return turns[:MAX_TOTAL_TURNS]
-
-    def _parse_export_file(self, data: list | dict, source: str) -> list[Turn]:
-        """Parse a claude.ai export JSON. Handles both single-chat and multi-chat formats."""
-        turns: list[Turn] = []
-        conversations = data if isinstance(data, list) else [data]
-
-        for convo in conversations:
-            if not isinstance(convo, dict):
-                continue
-            messages = convo.get("chat_messages", [])
-            pending_user = None
-
-            for msg in messages:
-                sender = msg.get("sender", "")
-                text = msg.get("text", "")
-                if not text:
-                    # some exports nest content in a list
-                    content = msg.get("content", [])
-                    if isinstance(content, list):
-                        text = " ".join(
-                            c.get("text", "") for c in content
-                            if isinstance(c, dict) and c.get("type") == "text"
-                        )
-
-                if not text.strip():
-                    continue
-
-                if sender == "human":
-                    pending_user = {
-                        "text": text,
-                        "timestamp": msg.get("created_at", ""),
-                    }
-                elif sender == "assistant" and pending_user:
-                    turns.append(Turn(
-                        user_message=_truncate(pending_user["text"]),
-                        assistant_message=_truncate(text),
-                        session_id=source,
-                        project="claude.ai-export",
-                        timestamp=pending_user["timestamp"],
-                    ))
-                    pending_user = None
-
-        return turns
 
     def scan_claude_md(self) -> list[str]:
         rules: list[str] = []
@@ -330,24 +265,20 @@ class DataScanner:
 
     def collect_all(self) -> UserData:
         turns = self.scan_sessions()
-        exported_turns = self.scan_exported_chats()
         memories = self.scan_memories()
         bridge_memories = self.scan_memory_bridge()
         rules = self.scan_claude_md()
 
-        all_turns = turns + exported_turns
         all_memories = memories + bridge_memories
-        projects = {t.project for t in all_turns}
-        sessions = {t.session_id for t in all_turns}
+        projects = {t.project for t in turns}
+        sessions = {t.session_id for t in turns}
 
         return UserData(
-            turns=all_turns[:MAX_TOTAL_TURNS],
+            turns=turns,
             memories=all_memories,
             claude_md_rules=rules,
             stats={
-                "total_turns": len(all_turns[:MAX_TOTAL_TURNS]),
-                "session_turns": len(turns),
-                "exported_turns": len(exported_turns),
+                "total_turns": len(turns),
                 "total_memories": len(all_memories),
                 "project_memories": len(memories),
                 "bridge_memories": len(bridge_memories),

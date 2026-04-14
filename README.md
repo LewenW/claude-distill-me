@@ -4,22 +4,23 @@ Distill yourself into a SKILL.md. Learns your judgment, style, and priorities fr
 
 Skills teach Claude how to do a type of work. Distill-Me teaches Claude how to do work **like you**.
 
-> claude-reflect learns your tool preferences. colleague-skill distills your colleagues. Distill-Me distills **you** — your decision patterns, communication style, and priorities — then fuses them with industry best practices.
+> Most memory tools capture "prefers tabs over spaces." Distill-Me captures "makes decisions by checking evidence before trusting reports, ships fast and iterates, handles ambiguity by demanding honest opinions, and their corrections reveal past bad experiences with over-helpful AI."
 
 ## How It Works
 
-Two learning layers:
+```
+/distill-me:distill
+```
+
+One command. Scans your Claude sessions, memories, and rules. Extracts behavioral patterns at three depths:
 
 ```
-Real-time (automatic)                    On-demand (/distill)
-─────────────────────                    ────────────────────
-Every message you send                   Session logs + memories
-  → hook detects corrections,            + queued learnings
-    preferences, style signals           + claude.ai exports
-  → queued as structured learnings         → deep pattern extraction
-    with confidence scores                 → fused with role templates
-                                           → SKILL.md output
+Layer 1: Observable     — what you literally say and do
+Layer 2: Interpretive   — what your patterns reveal about how you think
+Layer 3: Contrastive    — what makes you DIFFERENT from most people
 ```
+
+Output goes to `~/.claude/CLAUDE.md` (loads everywhere) and the plugin's `skills/enhanced-self/SKILL.md`.
 
 All processing is local. No data leaves your machine.
 
@@ -37,112 +38,107 @@ claude mcp add distill-me -e PYTHONPATH="$(pwd)/src" -- python -m distill_me.ser
 ## Usage
 
 ```
-/distill-me:distill        # synthesize all data → personal skill
-/distill-me:distill pm     # same, with PM best practices fused in
-/distill-me:profile        # view extracted patterns + queue stats
-/distill-me:queue          # view captured learnings
-/distill-me:import         # import claude.ai export data
+/distill-me:distill        # extract patterns → personal skill
+/distill-me:distill pm     # same, fused with PM best practices
 ```
 
-Between `/distill` runs, hooks automatically capture corrections, preferences, and style signals from every message. These accumulate in a learning queue and feed into the next distill.
+## What Gets Extracted
 
-## What Gets Captured (Real-Time)
+Three categories, each with three-layer depth:
 
-| Signal | Example | Confidence |
-|--------|---------|:---:|
-| Corrections | "no, use Python not JS" | 70-90% |
-| Explicit markers | "remember: always use type hints" | 90% |
-| Guardrails | "don't add comments unless I ask" | 85-90% |
-| Style feedback | "too verbose, keep it short" | 80% |
-| Preferences | "I prefer tables over lists" | 75% |
-| Decisions | "let's go with option B" | 65-70% |
-| Positive feedback | "perfect!" | 70% |
+**Decision-Making & Cognitive Patterns**
+- How you choose when presented with options
+- Your implicit decision framework (evidence-driven? gut? speed-first?)
+- Risk calibration and when it shifts by context
+- What your guardrails reveal about past experiences
+- What makes your reasoning different from most people
 
-Repeated signals merge and boost confidence. Stale learnings decay and get pruned automatically.
+**Communication & Personality**
+- Voice, language mixing patterns, message length as priority signal
+- Your relationship with AI and how it shifts by task
+- Emotional register — what triggers excitement, frustration, dismissal
+- Gap between how you write and how you want Claude to write
+- What makes your voice impossible to confuse with someone else's
 
-## What Gets Extracted (/distill)
-
-Three pattern categories, each with evidence and confidence:
-
-- **Judgment** — decision-making, risk tolerance, trade-off approaches, guardrails
-- **Style** — language, tone, formatting, message length, corrections
-- **Priorities** — task types, delegation, recurring concerns, tools
+**Values & Work Philosophy**
+- Stated preferences vs revealed preferences (where they diverge)
+- Values hierarchy — when two priorities conflict, which wins
+- Root values driving surface decisions
+- Meta-cognition: how you learn, handle your own mistakes
 
 <details>
-<summary>Example generated SKILL.md (click to expand)</summary>
+<summary>Example output (click to expand)</summary>
 
 ```markdown
-## Decision-Making & Judgment
+## Decision-Making & Cognitive Patterns
 
-- When receiving a bug report, this user wants you to **verify each finding
-  against current code first, then fix only real ones**.
-  Evidence: "很多之前报的 bug 实际上已经在代码中处理了" — they value re-reading
-  code over trusting the report.
+- **Pattern**: When receiving external input (bug reports, reviews), this user
+  verifies each claim against current code before acting — because they've been
+  burned by trusting reports that were already handled.
+  **Evidence**: "很多之前报的 bug 实际上已经在代码中处理了"
+  **Depth**: interpretive
 
-- When choosing scope, this user **skips low-impact edge cases and only fixes
-  functional + consistency issues**.
-  Evidence: "Bug 1 和 Bug 3 值得修。其余都是极端边缘情况，不动。"
+- **Pattern**: When scoping work, cuts aggressively — only fixes functional +
+  consistency issues, skips low-impact edge cases. This isn't laziness; it's a
+  trained instinct that scope creep kills shipping velocity.
+  **Evidence**: "Bug 1 和 Bug 3 值得修。其余都是极端边缘情况，不动。"
+  **Depth**: deep
 
-- When hitting ambiguity, this user **asks for the honest take, not an options
-  menu**. Evidence: 多次问 "你觉得我这个做得好吗" — they want judgment, not
-  the ball kicked back.
+## Communication & Personality
 
-## Communication Style
+- **Pattern**: Uses 2-5 word commands for routine tasks ("推", "好啦", "帮我弄吧")
+  but switches to detailed paragraphs when stakes are high. Message length IS
+  the priority signal — short means "just do it", long means "think carefully."
+  **Depth**: interpretive
 
-- Primary language: Mandarin Chinese mixed with English technical terms.
-  回复应同样中英混写.
-- Short, casual, direct messages. Typical turns: "推"、"好啦"、"然后呢".
-- Hates AI smell in code and docs. Banned words: "leverage", "utilize",
-  "comprehensive", "robust", "seamless".
-- Expects action, not clarifying questions. "帮我弄吧" means do it now.
-
-## Work Priorities
-
-- Building & shipping Claude ecosystem plugins is the active project line.
-- GitHub discoverability / stars matter — actively researches naming,
-  awesome-list submission, issue commenting.
-- Quality bar: no AI-slop code, no filler comments, functions <30 lines,
-  README readable in 60 seconds.
-- Ship cadence is fast — same-day from spec to GitHub to PyPI.
+- **Pattern**: Hates AI smell in output. Not just banned words ("leverage",
+  "robust") — the underlying objection is to THINKING that produces generic,
+  hedge-everything, please-everyone output. Wants opinionated, specific, direct.
+  **Depth**: deep
 ```
 
 </details>
 
+## Role Fusion
+
+Add a role name to fuse your personal patterns with industry best practices:
+
+```
+/distill-me:distill pm     # PM frameworks filtered through your style
+```
+
+Personal patterns always take priority. The role template adapts to fit you, not the reverse.
+
 ## Data Sources
 
-| Source | Location | When |
-|--------|----------|------|
-| Learning queue | `~/.claude/projects/*/distill-me-queue.json` | real-time |
-| Session logs | `~/.claude/projects/*/*.jsonl` | on /distill |
-| Memory files | `~/.claude/projects/*/memory/*.md` | on /distill |
-| CLAUDE.md | `~/.claude/CLAUDE.md` + project-level | on /distill |
-| memory-bridge | `~/.claude/shared-memory/` | on /distill |
-| claude.ai exports | plugin `import/` directory | after /import |
+| Source | Location |
+|--------|----------|
+| Session logs | `~/.claude/projects/*/*.jsonl` |
+| Memory files | `~/.claude/projects/*/memory/*.md` |
+| CLAUDE.md | `~/.claude/CLAUDE.md` + project-level |
+| memory-bridge | `~/.claude/shared-memory/` |
 
 ## MCP Tools
 
 | Tool | Purpose |
 |------|---------|
-| `scan_user_data()` | Collect all data + queue, return analysis prompts |
+| `scan_user_data()` | Collect all data, return three-layer analysis prompts |
 | `save_extracted_patterns()` | Write judgment/style/priorities to disk |
-| `generate_personal_skill()` | Build SKILL.md from patterns + role template |
-| `view_profile()` | Read patterns + queue stats |
-| `view_queue()` | List captured learnings |
+| `generate_personal_skill()` | Build SKILL.md from patterns + optional role fusion |
 
 ## Structure
 
 ```
-├── hooks/hooks.json                    # UserPromptSubmit + Stop hooks
-├── scripts/capture.py, session_end.py  # hook handlers
-├── commands/distill, profile, queue, import
-├── skills/self-distill/, enhanced-self/
-├── references/role-templates/pm.md
+├── commands/distill.md              # /distill-me:distill command
+├── skills/
+│   ├── self-distill/SKILL.md        # extraction quality guide
+│   └── enhanced-self/SKILL.md       # [generated] your personal skill
+├── references/role-templates/pm.md  # PM best practices
 └── src/distill_me/
-    ├── server.py      # MCP server (5 tools)
-    ├── scanner.py      # session/memory/export collection
-    ├── extractor.py    # analysis prompt preparation
-    ├── generator.py    # SKILL.md assembly
-    └── queue.py        # learning queue + pattern detection
+    ├── server.py                    # MCP server (3 tools)
+    ├── scanner.py                   # data collection
+    ├── extractor.py                 # three-layer extraction prompts
+    └── generator.py                 # SKILL.md + CLAUDE.md injection
 ```
 
 ## Relation to memory-bridge
@@ -153,18 +149,13 @@ memory-bridge remembers what you said. Distill-Me learns how you think.
 
 ## Platform Compatibility
 
-| Component | Claude Code CLI | Desktop Code tab | Cowork |
-|-----------|:-:|:-:|:-:|
-| MCP tools (5) | yes | yes | needs bridge |
-| Real-time hooks | yes | yes | no |
-| `/distill-me:*` commands | yes | yes | yes |
-| SKILL.md output | yes | yes | may not load |
+Works everywhere Claude loads `~/.claude/CLAUDE.md`:
 
-**Best experience: Claude Code CLI or Desktop Code tab.**
-
-Cowork limitations (platform-side, not fixable by this plugin):
-- Hooks don't fire in Cowork VMs — no real-time capture. Use manual `/distill-me:distill` instead.
-- Custom plugin skills may not mount in the VM. Workaround: copy the generated SKILL.md content into `~/.claude/CLAUDE.md`.
+| Feature | Claude Code CLI | Desktop | Cowork |
+|---------|:-:|:-:|:-:|
+| MCP tools | yes | yes | needs bridge |
+| `/distill-me:distill` | yes | yes | yes |
+| Output to CLAUDE.md | yes | yes | yes |
 
 ## Requirements
 

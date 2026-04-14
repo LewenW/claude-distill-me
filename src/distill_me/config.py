@@ -16,8 +16,6 @@ OUTPUT_DIR = PLUGIN_ROOT / "output"
 PATTERNS_DIR = OUTPUT_DIR / "patterns"
 ENHANCED_SKILL_DIR = PLUGIN_ROOT / "skills" / "enhanced-self"
 ROLE_TEMPLATES_DIR = PLUGIN_ROOT / "references" / "role-templates"
-PLUGINS_DIR = CLAUDE_HOME / "plugins"
-EXPORT_DIR = PLUGIN_ROOT / "import"
 
 SCAN_DAYS = 30
 MAX_SESSIONS = 20
@@ -25,9 +23,11 @@ MAX_TURNS_PER_SESSION = 50
 MAX_TOTAL_TURNS = 500
 MAX_MESSAGE_CHARS = 2000
 
-# Projects to exclude from scanning (privacy). Matches against encoded dir names.
-# Users can set via env: DISTILLME_EXCLUDE_PROJECTS="medical-app,diary"
 _exclude_raw = os.environ.get("DISTILLME_EXCLUDE_PROJECTS", "")
 EXCLUDE_PROJECTS: set[str] = {
     p.strip() for p in _exclude_raw.split(",") if p.strip()
 }
+
+# Markers for injecting generated content into ~/.claude/CLAUDE.md
+CLAUDE_MD_START = "<!-- distill-me:start -->"
+CLAUDE_MD_END = "<!-- distill-me:end -->"

@@ -1,4 +1,4 @@
-"""Distill-Me MCP server."""
+"""Distill-Me MCP server — 3 tools for deep behavioral distillation."""
 
 from __future__ import annotations
 
@@ -6,29 +6,28 @@ from mcp.server.fastmcp import FastMCP
 
 from distill_me.scanner import DataScanner
 from distill_me.extractor import prepare_for_analysis
-from distill_me.queue import effective_confidence, load_queue, prune_stale, queue_stats
 from distill_me.generator import (
     _strip_frontmatter,
     available_roles,
     generate_skill,
+    inject_into_claude_md,
     read_patterns,
     save_patterns,
     save_skill,
-    scan_installed_skills,
 )
 
 _INSTRUCTIONS = """\
-You have Distill-Me, a continuous learning tool for personal skill distillation.
+You have Distill-Me, a deep behavioral distillation tool.
 
-Distill-Me learns from you in two ways:
-1. **Real-time**: Hooks capture corrections, preferences, and feedback from \
-every message you send (stored in a learning queue)
-2. **On-demand**: /distill-me:distill scans session history + queued learnings \
-to extract deep behavioral patterns
+Distill-Me scans your Claude session history, memory files, and CLAUDE.md \
+rules across all projects. It extracts behavioral patterns at three depths:
 
-The learning queue accumulates signals over time. Each /distill run \
-synthesizes all available data (queue + sessions + memories) into a \
-personal SKILL.md that makes Claude work more like you.
+1. **Observable** — what you explicitly say and do
+2. **Interpretive** — what your patterns reveal about how you think
+3. **Contrastive** — what makes you DIFFERENT from most people
+
+Run /distill-me:distill to generate your personal skill. The output goes \
+to both the plugin's SKILL.md and your ~/.claude/CLAUDE.md (loads everywhere).
 
 Flow: scan_user_data() → analyze → save_extracted_patterns() → \
 generate_personal_skill().
@@ -38,7 +37,6 @@ mcp = FastMCP("distill-me", instructions=_INSTRUCTIONS)
 
 
 def _safe(fn):
-    """Wrap MCP tool to return error string instead of raw traceback."""
     import functools
 
     @functools.wraps(fn)
@@ -54,68 +52,49 @@ def _safe(fn):
 @mcp.tool()
 @_safe
 def scan_user_data() -> str:
-    """Scan local Claude data + learning queue for pattern analysis.
+    """Scan local Claude data for deep behavioral analysis.
 
-    Collects session logs, memory files, CLAUDE.md rules, memory-bridge
-    namespaces, claude.ai exports, AND queued real-time learnings.
-    Returns data + analysis prompts for Claude to extract patterns.
+    Collects session logs, memory files, CLAUDE.md rules, and
+    memory-bridge namespaces. Returns data + three-layer extraction
+    prompts for Claude to analyze.
     """
     scanner = DataScanner()
     data = scanner.collect_all()
-
-    # Prune stale items, then collect queued learnings
-    for proj_dir in _scan_project_dirs():
-        prune_stale(proj_dir)
-    prune_stale()
-
-    all_queued: list[dict] = []
-    for proj_dir in _scan_project_dirs():
-        all_queued.extend(load_queue(proj_dir))
-    all_queued.extend(load_queue())
-
-    # Pass queued messages so turns already in queue get deduplicated
-    queued_msgs = [item.get("message", "") for item in all_queued]
-    bundle = prepare_for_analysis(data, queued_messages=queued_msgs)
-
-    queue_section = ""
-    if all_queued:
-        queue_section = _format_queue(all_queued)
-
+    bundle = prepare_for_analysis(data)
     stats = data.stats
 
     low_data_warning = ""
     if stats["total_turns"] < 20 or stats["sessions_scanned"] < 3:
         low_data_warning = (
-            "**⚠ Low data:** Pattern quality improves with more data. "
-            "Consider running distill again after a few more sessions.\n\n"
+            "**Low data.** Pattern depth improves with more sessions. "
+            "Consider running distill again after a few more days of use.\n\n"
         )
 
     return (
         f"# Scan Complete\n\n"
-        f"**{stats['total_turns']}** turns "
-        f"({stats['session_turns']} from sessions, "
-        f"{stats['exported_turns']} from exports) | "
+        f"**{stats['total_turns']}** turns | "
         f"**{stats['sessions_scanned']}** sessions | "
         f"**{stats['projects_scanned']}** projects | "
         f"**{stats['total_memories']}** memories "
         f"({stats['project_memories']} project, "
         f"{stats['bridge_memories']} bridge) | "
-        f"**{stats['total_rules']}** rule files | "
-        f"**{len(all_queued)}** queued learnings\n\n"
+        f"**{stats['total_rules']}** rule files\n\n"
         f"{low_data_warning}"
         f"---\n\n"
-        f"{queue_section}"
-        f"Analyze ALL the Collected Data below. "
-        f"Extract three pattern categories. Be specific and evidence-backed.\n\n"
-        f"For each pattern, use this format:\n"
-        f"- **Pattern**: [concise statement]\n"
-        f"- **Evidence**: [specific example from the data]\n"
-        f"- **Confidence**: high/medium/low\n\n"
+        f"Analyze ALL the Collected Data below using three-layer extraction "
+        f"(Observable → Interpretive → Contrastive). Be specific and "
+        f"evidence-backed. Go deep — extract HOW this user thinks, not just "
+        f"WHAT they prefer.\n\n"
+        f"For each pattern:\n"
+        f"- **Pattern**: When [situation], this user [behavior] because [reason]\n"
+        f"- **Evidence**: [specific example from data]\n"
+        f"- **Confidence**: high/medium/low\n"
+        f"- **Depth**: surface / interpretive / deep\n\n"
         f"{bundle.data_summary}\n\n"
         f"---\n\n"
-        f"## 1. Judgment Patterns\n\n{bundle.judgment_prompt}\n\n"
-        f"## 2. Communication Style\n\n{bundle.style_prompt}\n\n"
-        f"## 3. Work Priorities\n\n{bundle.priorities_prompt}\n"
+        f"## 1. Decision-Making & Cognitive Patterns\n\n{bundle.judgment_prompt}\n\n"
+        f"## 2. Communication & Personality\n\n{bundle.style_prompt}\n\n"
+        f"## 3. Values & Work Philosophy\n\n{bundle.priorities_prompt}\n"
     )
 
 
@@ -129,9 +108,9 @@ def save_extracted_patterns(
     """Save extracted patterns to disk.
 
     Args:
-        judgment: User's decision-making patterns (markdown).
-        style: User's communication style (markdown).
-        priorities: User's work priorities (markdown).
+        judgment: Decision-making and cognitive patterns (markdown).
+        style: Communication and personality patterns (markdown).
+        priorities: Values and work philosophy (markdown).
     """
     saved = save_patterns(judgment, style, priorities)
     paths = "\n".join(f"- {k}: {v}" for k, v in saved.items())
@@ -144,16 +123,12 @@ def generate_personal_skill(
     role: str = "",
     custom_instructions: str = "",
 ) -> str:
-    """Generate SKILL.md from saved patterns + optional skill fusion.
+    """Generate SKILL.md from saved patterns + optional role fusion.
 
     Call save_extracted_patterns() first.
 
-    The role parameter matches against both built-in templates and
-    installed Cowork plugin skills. For example, "code-review" would
-    fuse your patterns with the installed code-review skill.
-
     Args:
-        role: Skill to fuse with (e.g. "pm", "code-review", "frontend-design"). Empty for pure distillation.
+        role: Role template to fuse with (e.g. "pm"). Empty for pure distillation.
         custom_instructions: Extra instructions to include.
     """
     patterns = read_patterns()
@@ -175,13 +150,13 @@ def generate_personal_skill(
                 role_arg = matches[0]
             elif len(matches) > 1:
                 return (
-                    f"Multiple skills match '{role}':\n"
+                    f"Multiple roles match '{role}':\n"
                     + "\n".join(f"- {r}" for r in matches)
                     + "\n\nSpecify the full name."
                 )
             else:
                 return (
-                    f"No skill matching '{role}'. Available:\n"
+                    f"No role matching '{role}'. Available:\n"
                     + "\n".join(f"- {r}" for r in roles)
                 )
 
@@ -193,133 +168,16 @@ def generate_personal_skill(
         custom_instructions=custom_instructions or None,
     )
 
-    path = save_skill(skill_content)
-    return f"Saved to: {path}\n\nAvailable skills for fusion: {', '.join(roles[:20]) if roles else 'none'}\n\n---\n\n{skill_content}"
+    skill_path = save_skill(skill_content)
+    claude_md_path = inject_into_claude_md(skill_content)
 
-
-@mcp.tool()
-@_safe
-def view_profile() -> str:
-    """View current extracted patterns and learning queue stats."""
-    patterns = read_patterns()
-
-    # Gather queue stats across projects
-    total_queued = 0
-    total_stale = 0
-    for proj_dir in _scan_project_dirs():
-        s = queue_stats(proj_dir)
-        total_queued += s["total"]
-        total_stale += s.get("stale", 0)
-    global_stats = queue_stats()
-    total_queued += global_stats["total"]
-    total_stale += global_stats.get("stale", 0)
-
-    if not patterns and total_queued == 0:
-        return "No patterns or learnings yet. Run /distill-me:distill first."
-
-    parts = []
-    last_updated = ""
-    if patterns:
-        for name, content in patterns.items():
-            parts.append(f"## {name.title()}\n\n{_strip_frontmatter(content)}")
-            # Extract updated date from frontmatter
-            if not last_updated and "updated:" in content:
-                for line in content.splitlines():
-                    if line.strip().startswith("updated:"):
-                        last_updated = line.partition(":")[2].strip()
-                        break
-
-    active = total_queued - total_stale
-    queue_msg = f"\n\n---\n\n**Learning queue:** {active} active items"
-    if total_stale:
-        queue_msg += f" ({total_stale} stale)"
-    queue_msg += "."
-    if active >= 10:
-        queue_msg += " Run /distill-me:distill to incorporate them."
-
-    header = "# Your Profile\n\n"
-    if last_updated:
-        header += f"*Last distilled: {last_updated}*\n\n"
-    profile = header + "\n\n---\n\n".join(parts) if parts else "# No patterns extracted yet"
-    return profile + queue_msg
-
-
-@mcp.tool()
-@_safe
-def view_queue() -> str:
-    """View the real-time learning queue (captured corrections, preferences, feedback)."""
-    all_items: list[dict] = []
-    for proj_dir in _scan_project_dirs():
-        all_items.extend(load_queue(proj_dir))
-    all_items.extend(load_queue())
-
-    if not all_items:
-        return "Learning queue is empty. As you use Claude, corrections and preferences are captured automatically."
-
-    all_items.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
-
-    # Summary by type + most frequent patterns
-    by_type: dict[str, int] = {}
-    by_pattern: dict[str, int] = {}
-    for item in all_items:
-        t = item.get("learning_type", "?")
-        by_type[t] = by_type.get(t, 0) + 1
-        msg = item.get("message", "")[:40]
-        obs = item.get("observations", 1)
-        if obs > 1:
-            by_pattern[msg] = obs
-
-    type_summary = ", ".join(f"{v} {k}" for k, v in sorted(by_type.items(), key=lambda x: -x[1]))
-    lines = [f"# Learning Queue ({len(all_items)} items)\n", f"**Breakdown:** {type_summary}"]
-    if by_pattern:
-        top = sorted(by_pattern.items(), key=lambda x: -x[1])[:5]
-        freq = ", ".join(f"'{k}' ({v}x)" for k, v in top)
-        lines.append(f"**Recurring:** {freq}")
-    lines.append("")
-
-    for item in all_items[:50]:
-        msg = item.get("message", "")[:80]
-        ltype = item.get("learning_type", "?")
-        eff = effective_confidence(item)
-        ts = item.get("timestamp", "")[:10]
-        obs = item.get("observations", 1)
-        suffix = f" (×{obs})" if obs > 1 else ""
-        lines.append(f"- [{ltype}] ({eff:.0%}) {msg}{suffix} — {ts}")
-
-    if len(all_items) > 50:
-        lines.append(f"\n... and {len(all_items) - 50} more")
-
-    return "\n".join(lines)
-
-
-def _format_queue(items: list[dict]) -> str:
-    """Format queued learnings for inclusion in analysis."""
-    lines = ["## Queued Real-Time Learnings\n",
-             "These are high-signal corrections and preferences captured "
-             "from individual messages. Weight them heavily.\n"]
-    for item in items:
-        ltype = item.get("learning_type", "?")
-        eff = effective_confidence(item)
-        msg = item.get("message", "")
-        obs = item.get("observations", 1)
-        msg = msg[:300]
-        obs_tag = f" (seen {obs}×)" if obs > 1 else ""
-        lines.append(f"- **[{ltype}, {eff:.0%}]** {msg}{obs_tag}")
-    lines.append("\n---\n")
-    return "\n".join(lines)
-
-
-def _scan_project_dirs() -> list[str]:
-    """Get list of project directories that might have queues.
-
-    Returns directory *names* (already-encoded), not full paths.
-    This avoids double-encoding when passed to _queue_path.
-    """
-    from distill_me.config import PROJECTS_DIR
-    if not PROJECTS_DIR.exists():
-        return []
-    return [d.name for d in PROJECTS_DIR.iterdir() if d.is_dir()]
-
+    return (
+        f"Saved to:\n"
+        f"- Plugin skill: {skill_path}\n"
+        f"- Global config: {claude_md_path}\n\n"
+        f"Available roles for fusion: {', '.join(roles) if roles else 'none'}\n\n"
+        f"---\n\n{skill_content}"
+    )
 
 
 def main():
