@@ -35,7 +35,7 @@ def load_role_template(role: str) -> str | None:
 
 
 def available_roles() -> list[str]:
-    if not ROLE_TEMPLATES_DIR.exists():
+    if not ROLE_TEMPLATES_DIR.is_dir():
         return []
     return [f.stem for f in ROLE_TEMPLATES_DIR.glob("*.md")]
 
@@ -160,12 +160,24 @@ def save_skill(skill_content: str) -> str:
     return str(path)
 
 
+def _backup_claude_md() -> Path | None:
+    """Backup ~/.claude/CLAUDE.md before modifying."""
+    if not GLOBAL_CLAUDE_MD.exists():
+        return None
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    backup = GLOBAL_CLAUDE_MD.with_name(f"CLAUDE.md.{ts}.bak")
+    import shutil
+    shutil.copy2(GLOBAL_CLAUDE_MD, backup)
+    return backup
+
+
 def inject_into_claude_md(skill_content: str) -> str:
     """Inject generated skill into ~/.claude/CLAUDE.md between markers.
 
-    Creates the file if it doesn't exist. Updates the marked section
-    if it already exists. Preserves all other content.
+    Backs up existing file first. Creates the file if it doesn't exist.
+    Updates the marked section if it already exists. Preserves all other content.
     """
+    _backup_claude_md()
     stripped = _strip_frontmatter(skill_content)
     injection = f"{CLAUDE_MD_START}\n{stripped}\n{CLAUDE_MD_END}"
 

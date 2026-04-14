@@ -145,7 +145,7 @@ def generate_personal_skill(
         if role in roles:
             role_arg = role
         else:
-            matches = [r for r in roles if role.lower() in r.lower()]
+            matches = [r for r in roles if r.lower().startswith(role.lower())]
             if len(matches) == 1:
                 role_arg = matches[0]
             elif len(matches) > 1:

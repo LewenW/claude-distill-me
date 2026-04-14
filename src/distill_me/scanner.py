@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from distill_me.config import (
+    CLAUDE_MD_END,
+    CLAUDE_MD_START,
     EXCLUDE_PROJECTS,
     GLOBAL_CLAUDE_MD,
     MAX_MESSAGE_CHARS,
@@ -95,6 +97,15 @@ def _extract_text(content, role: str = "user") -> str:
     return str(content)
 
 
+def _strip_distill_section(text: str) -> str:
+    """Remove distill-me's own output to prevent feedback loops on re-distill."""
+    start = text.find(CLAUDE_MD_START)
+    end = text.find(CLAUDE_MD_END)
+    if start != -1 and end != -1:
+        return text[:start] + text[end + len(CLAUDE_MD_END):]
+    return text
+
+
 def _is_excluded(dir_name: str) -> bool:
     if not EXCLUDE_PROJECTS:
         return False
@@ -138,7 +149,7 @@ class DataScanner:
         session_id = fpath.stem
 
         try:
-            with open(fpath) as f:
+            with open(fpath, encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
                     if not line:
@@ -206,6 +217,8 @@ class DataScanner:
         for ns_dir in SHARED_MEMORY_DIR.iterdir():
             if not ns_dir.is_dir():
                 continue
+            if _is_excluded(ns_dir.name):
+                continue
             for md_file in ns_dir.glob("*.md"):
                 if md_file.name == "MEMORY.md":
                     continue
@@ -221,6 +234,7 @@ class DataScanner:
         if GLOBAL_CLAUDE_MD.exists():
             try:
                 text = GLOBAL_CLAUDE_MD.read_text(encoding="utf-8")
+                text = _strip_distill_section(text)
                 if text.strip():
                     rules.append(f"[Global CLAUDE.md]\n{text.strip()}")
             except OSError:
