@@ -18,7 +18,7 @@ Help the user import their claude.ai conversation history for richer pattern ext
    - Go to claude.ai → Settings → Export Data
    - Download the ZIP, extract it
    - Place the `conversations.json` (or individual chat JSON files) into the plugin's `import/` directory
-   - Then re-run `/plus-me:distill` to include this data in the analysis
+   - Then re-run `/distill-me:distill` to include this data in the analysis
 
 4. After copying, call `scan_user_data()` to verify the imported data is detected. Report how many exported turns were found.
 

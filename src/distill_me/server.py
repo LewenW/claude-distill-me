@@ -1,13 +1,13 @@
-"""Plus-Me MCP server."""
+"""Distill-Me MCP server."""
 
 from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
 
-from plus_me.scanner import DataScanner
-from plus_me.extractor import prepare_for_analysis
-from plus_me.queue import effective_confidence, load_queue, prune_stale, queue_stats
-from plus_me.generator import (
+from distill_me.scanner import DataScanner
+from distill_me.extractor import prepare_for_analysis
+from distill_me.queue import effective_confidence, load_queue, prune_stale, queue_stats
+from distill_me.generator import (
     available_roles,
     generate_skill,
     read_patterns,
@@ -17,12 +17,12 @@ from plus_me.generator import (
 )
 
 _INSTRUCTIONS = """\
-You have Plus-Me, a continuous learning tool for personal skill distillation.
+You have Distill-Me, a continuous learning tool for personal skill distillation.
 
-Plus-Me learns from you in two ways:
+Distill-Me learns from you in two ways:
 1. **Real-time**: Hooks capture corrections, preferences, and feedback from \
 every message you send (stored in a learning queue)
-2. **On-demand**: /plus-me:distill scans session history + queued learnings \
+2. **On-demand**: /distill-me:distill scans session history + queued learnings \
 to extract deep behavioral patterns
 
 The learning queue accumulates signals over time. Each /distill run \
@@ -33,7 +33,7 @@ Flow: scan_user_data() → analyze → save_extracted_patterns() → \
 generate_personal_skill().
 """
 
-mcp = FastMCP("plus-me", instructions=_INSTRUCTIONS)
+mcp = FastMCP("distill-me", instructions=_INSTRUCTIONS)
 
 
 def _safe(fn):
@@ -61,7 +61,6 @@ def scan_user_data() -> str:
     """
     scanner = DataScanner()
     data = scanner.collect_all()
-    bundle = prepare_for_analysis(data)
 
     # Prune stale items, then collect queued learnings
     for proj_dir in _scan_project_dirs():
@@ -73,11 +72,23 @@ def scan_user_data() -> str:
         all_queued.extend(load_queue(proj_dir))
     all_queued.extend(load_queue())
 
+    # Pass queued messages so turns already in queue get deduplicated
+    queued_msgs = [item.get("message", "") for item in all_queued]
+    bundle = prepare_for_analysis(data, queued_messages=queued_msgs)
+
     queue_section = ""
     if all_queued:
         queue_section = _format_queue(all_queued)
 
     stats = data.stats
+
+    low_data_warning = ""
+    if stats["total_turns"] < 20 or stats["sessions_scanned"] < 3:
+        low_data_warning = (
+            "**⚠ Low data:** Pattern quality improves with more data. "
+            "Consider running distill again after a few more sessions.\n\n"
+        )
+
     return (
         f"# Scan Complete\n\n"
         f"**{stats['total_turns']}** turns "
@@ -90,6 +101,7 @@ def scan_user_data() -> str:
         f"{stats['bridge_memories']} bridge) | "
         f"**{stats['total_rules']}** rule files | "
         f"**{len(all_queued)}** queued learnings\n\n"
+        f"{low_data_warning}"
         f"---\n\n"
         f"{queue_section}"
         f"Analyze ALL the Collected Data below. "
@@ -152,15 +164,20 @@ def generate_personal_skill(
     priorities = _strip_frontmatter(patterns.get("priorities", ""))
 
     roles = available_roles()
-    # Fuzzy match: allow partial name matching
     role_arg = None
     if role:
         if role in roles:
             role_arg = role
         else:
             matches = [r for r in roles if role.lower() in r.lower()]
-            if matches:
+            if len(matches) == 1:
                 role_arg = matches[0]
+            elif len(matches) > 1:
+                return (
+                    f"Multiple skills match '{role}':\n"
+                    + "\n".join(f"- {r}" for r in matches)
+                    + "\n\nSpecify the full name."
+                )
             else:
                 return (
                     f"No skill matching '{role}'. Available:\n"
@@ -197,12 +214,19 @@ def view_profile() -> str:
     total_stale += global_stats.get("stale", 0)
 
     if not patterns and total_queued == 0:
-        return "No patterns or learnings yet. Run /plus-me:distill first."
+        return "No patterns or learnings yet. Run /distill-me:distill first."
 
     parts = []
+    last_updated = ""
     if patterns:
         for name, content in patterns.items():
             parts.append(f"## {name.title()}\n\n{_strip_frontmatter(content)}")
+            # Extract updated date from frontmatter
+            if not last_updated and "updated:" in content:
+                for line in content.splitlines():
+                    if line.strip().startswith("updated:"):
+                        last_updated = line.partition(":")[2].strip()
+                        break
 
     active = total_queued - total_stale
     queue_msg = f"\n\n---\n\n**Learning queue:** {active} active items"
@@ -210,9 +234,12 @@ def view_profile() -> str:
         queue_msg += f" ({total_stale} stale)"
     queue_msg += "."
     if active >= 10:
-        queue_msg += " Run /plus-me:distill to incorporate them."
+        queue_msg += " Run /distill-me:distill to incorporate them."
 
-    profile = "# Your Profile\n\n" + "\n\n---\n\n".join(parts) if parts else "# No patterns extracted yet"
+    header = "# Your Profile\n\n"
+    if last_updated:
+        header += f"*Last distilled: {last_updated}*\n\n"
+    profile = header + "\n\n---\n\n".join(parts) if parts else "# No patterns extracted yet"
     return profile + queue_msg
 
 
@@ -230,7 +257,25 @@ def view_queue() -> str:
 
     all_items.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
 
-    lines = [f"# Learning Queue ({len(all_items)} items)\n"]
+    # Summary by type + most frequent patterns
+    by_type: dict[str, int] = {}
+    by_pattern: dict[str, int] = {}
+    for item in all_items:
+        t = item.get("learning_type", "?")
+        by_type[t] = by_type.get(t, 0) + 1
+        msg = item.get("message", "")[:40]
+        obs = item.get("observations", 1)
+        if obs > 1:
+            by_pattern[msg] = obs
+
+    type_summary = ", ".join(f"{v} {k}" for k, v in sorted(by_type.items(), key=lambda x: -x[1]))
+    lines = [f"# Learning Queue ({len(all_items)} items)\n", f"**Breakdown:** {type_summary}"]
+    if by_pattern:
+        top = sorted(by_pattern.items(), key=lambda x: -x[1])[:5]
+        freq = ", ".join(f"'{k}' ({v}x)" for k, v in top)
+        lines.append(f"**Recurring:** {freq}")
+    lines.append("")
+
     for item in all_items[:50]:
         msg = item.get("message", "")[:80]
         ltype = item.get("learning_type", "?")
@@ -269,7 +314,7 @@ def _scan_project_dirs() -> list[str]:
     Returns directory *names* (already-encoded), not full paths.
     This avoids double-encoding when passed to _queue_path.
     """
-    from plus_me.config import PROJECTS_DIR
+    from distill_me.config import PROJECTS_DIR
     if not PROJECTS_DIR.exists():
         return []
     return [d.name for d in PROJECTS_DIR.iterdir() if d.is_dir()]

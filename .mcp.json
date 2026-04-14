@@ -1,7 +1,7 @@
 {
-  "plus-me": {
+  "distill-me": {
     "command": "python",
-    "args": ["-m", "plus_me.server"],
+    "args": ["-m", "distill_me.server"],
     "env": {
       "PYTHONPATH": "${CLAUDE_PLUGIN_ROOT}/src"
     }

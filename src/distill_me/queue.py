@@ -2,18 +2,31 @@
 
 from __future__ import annotations
 
-import fcntl
 import json
 import re
+import sys
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from plus_me.config import CLAUDE_HOME
+from distill_me.config import CLAUDE_HOME
 
 
-QUEUE_FILENAME = "plus-me-queue.json"
+def _flock(lock_f, operation):
+    """Cross-platform file locking. Uses fcntl on Unix, msvcrt on Windows."""
+    try:
+        import fcntl
+        fcntl.flock(lock_f, operation)
+    except ImportError:
+        import msvcrt
+        if operation in (1, 2):  # LOCK_SH, LOCK_EX
+            msvcrt.locking(lock_f.fileno(), msvcrt.LK_LOCK, 1)
+        else:  # LOCK_UN
+            msvcrt.locking(lock_f.fileno(), msvcrt.LK_UNLCK, 1)
+
+
+QUEUE_FILENAME = "distill-me-queue.json"
 
 
 def _encode_project_dir(raw_path: str) -> str:
@@ -26,7 +39,7 @@ def _encode_project_dir(raw_path: str) -> str:
 
 
 def _queue_path(project_dir: Optional[str] = None) -> Path:
-    """Per-project queue at ~/.claude/projects/<encoded>/plus-me-queue.json.
+    """Per-project queue at ~/.claude/projects/<encoded>/distill-me-queue.json.
 
     project_dir can be a raw path (from hooks, e.g. /Users/bob/myproject)
     or an already-encoded directory name (from scanning, e.g. -Users-bob-myproject).
@@ -301,12 +314,16 @@ def effective_confidence(item: dict) -> float:
 
 
 def _locked_read_write(path: Path, fn):
-    """Read-modify-write with file lock to prevent race conditions."""
+    """Read-modify-write with file lock to prevent race conditions.
+
+    Cross-platform: uses fcntl on Unix, msvcrt on Windows.
+    Logs to stderr on lock failure instead of silently dropping data.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     lock_path = path.with_suffix(".lock")
     try:
         with open(lock_path, "w") as lock_f:
-            fcntl.flock(lock_f, fcntl.LOCK_EX)
+            _flock(lock_f, 2)  # LOCK_EX
             try:
                 items = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
             except (json.JSONDecodeError, OSError):
@@ -314,8 +331,9 @@ def _locked_read_write(path: Path, fn):
             result = fn(items)
             path.write_text(json.dumps(items, indent=2, ensure_ascii=False), encoding="utf-8")
             return result
-    except OSError:
-        return fn([])
+    except OSError as e:
+        print(f"distill-me: lock failed for {path}: {e}", file=sys.stderr)
+        return None
 
 
 def load_queue(project_dir: Optional[str] = None) -> list[dict]:
@@ -368,12 +386,16 @@ def append_learning(learning: Learning, project_dir: Optional[str] = None) -> No
 
 def prune_stale(project_dir: Optional[str] = None) -> int:
     """Remove items whose confidence has decayed to zero. Returns count removed."""
-    items = load_queue(project_dir)
-    before = len(items)
-    items = [i for i in items if effective_confidence(i) > 0]
-    if len(items) < before:
-        save_queue(items, project_dir)
-    return before - len(items)
+    path = _queue_path(project_dir)
+    removed = [0]
+
+    def _prune(items: list[dict]) -> None:
+        before = len(items)
+        items[:] = [i for i in items if effective_confidence(i) > 0]
+        removed[0] = before - len(items)
+
+    _locked_read_write(path, _prune)
+    return removed[0]
 
 
 def queue_stats(project_dir: Optional[str] = None) -> dict:

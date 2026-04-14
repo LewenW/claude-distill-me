@@ -1,13 +1,13 @@
 ---
 name: profile
-description: View your current Plus-Me profile (extracted behavioral patterns)
+description: View your current Distill-Me profile (extracted behavioral patterns)
 ---
 
-# Plus-Me: View Profile
+# Distill-Me: View Profile
 
 Call `view_profile()` to display the user's current extracted patterns.
 
-If no patterns exist yet, suggest running `/plus-me:distill` first.
+If no patterns exist yet, suggest running `/distill-me:distill` first.
 
 Present the patterns in a readable format, organized by:
 1. Judgment & Decision-Making

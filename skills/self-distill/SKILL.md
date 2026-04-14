@@ -1,10 +1,10 @@
 ---
 name: self-distill
-description: Guides Plus-Me continuous learning and distillation. Activates when user wants to create/update their personal skill or when Plus-Me tools are used.
+description: Guides Distill-Me continuous learning and distillation. Activates when user wants to create/update their personal skill or when Distill-Me tools are used.
 version: 0.2.0
 ---
 
-# Plus-Me Continuous Learning Guide
+# Distill-Me Continuous Learning Guide
 
 ## Two Learning Layers
 

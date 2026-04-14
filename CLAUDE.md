@@ -1,4 +1,4 @@
-# Plus-Me Development Rules
+# Distill-Me Development Rules
 
 ## Code Style
 

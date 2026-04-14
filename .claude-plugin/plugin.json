@@ -1,7 +1,7 @@
 {
-  "name": "plus-me",
+  "name": "distill-me",
   "version": "0.1.0",
-  "description": "Distill your behavioral patterns from Claude data + industry best practices into a personal skill that makes Claude work like a more professional version of you.",
+  "description": "Distill your behavioral patterns from Claude data into a personal skill that makes Claude work like a more professional version of you.",
   "author": {
     "name": "wanglewe"
   }

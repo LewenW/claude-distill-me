@@ -7,7 +7,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
 
-from plus_me.queue import detect_learning, append_learning
+from distill_me.queue import detect_learning, append_learning
 
 
 def main() -> int:
@@ -32,7 +32,7 @@ def main() -> int:
     append_learning(learning, project_dir)
 
     preview = prompt[:50] + "..." if len(prompt) > 50 else prompt
-    print(f"[plus-me] captured: '{preview}' ({learning.learning_type}, {learning.confidence:.0%})", file=sys.stderr)
+    print(f"[distill-me] captured: '{preview}' ({learning.learning_type}, {learning.confidence:.0%})", file=sys.stderr)
     return 0
 
 

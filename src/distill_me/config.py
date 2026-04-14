@@ -24,3 +24,10 @@ MAX_SESSIONS = 20
 MAX_TURNS_PER_SESSION = 50
 MAX_TOTAL_TURNS = 500
 MAX_MESSAGE_CHARS = 2000
+
+# Projects to exclude from scanning (privacy). Matches against encoded dir names.
+# Users can set via env: PLUSME_EXCLUDE_PROJECTS="medical-app,diary"
+_exclude_raw = os.environ.get("PLUSME_EXCLUDE_PROJECTS", "")
+EXCLUDE_PROJECTS: set[str] = {
+    p.strip() for p in _exclude_raw.split(",") if p.strip()
+}

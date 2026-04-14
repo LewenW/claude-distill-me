@@ -8,8 +8,9 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from plus_me.config import (
+from distill_me.config import (
     CLAUDE_HOME,
+    EXCLUDE_PROJECTS,
     EXPORT_DIR,
     GLOBAL_CLAUDE_MD,
     MAX_MESSAGE_CHARS,
@@ -70,16 +71,18 @@ def _truncate(s: str, limit: int = MAX_MESSAGE_CHARS) -> str:
     return s[:limit] + "..."
 
 
-def _extract_text(content) -> str:
+def _extract_text(content, role: str = "user") -> str:
     """Extract readable text from message content blocks.
 
-    Handles text, tool_use (name + truncated input), and tool_result blocks.
-    Skips thinking blocks — they're internal model reasoning.
+    For assistant messages, tool_use/tool_result blocks are collapsed to
+    a count (e.g. "[used 3 tools]") to reduce noise in pattern analysis.
+    User messages keep all text verbatim.
     """
     if isinstance(content, str):
         return content
     if isinstance(content, list):
         parts = []
+        tool_count = 0
         for block in content:
             if isinstance(block, str):
                 parts.append(block)
@@ -87,15 +90,19 @@ def _extract_text(content) -> str:
                 continue
             elif block.get("type") == "text":
                 parts.append(block.get("text", ""))
-            elif block.get("type") == "tool_use":
-                name = block.get("name", "")
-                inp = str(block.get("input", ""))[:200]
-                parts.append(f"[tool: {name}({inp})]")
-            elif block.get("type") == "tool_result":
-                res = str(block.get("content", ""))[:200]
-                parts.append(f"[result: {res}]")
+            elif block.get("type") in ("tool_use", "tool_result"):
+                tool_count += 1
+        if tool_count:
+            parts.append(f"[used {tool_count} tools]")
         return "\n".join(parts)
     return str(content)
+
+
+def _is_excluded(dir_name: str) -> bool:
+    """Check if a project directory is in the exclusion list."""
+    if not EXCLUDE_PROJECTS:
+        return False
+    return any(excl in dir_name for excl in EXCLUDE_PROJECTS)
 
 
 class DataScanner:
@@ -109,6 +116,8 @@ class DataScanner:
 
         for proj_dir in PROJECTS_DIR.iterdir():
             if not proj_dir.is_dir():
+                continue
+            if _is_excluded(proj_dir.name):
                 continue
             for f in proj_dir.glob("*.jsonl"):
                 mtime = f.stat().st_mtime
@@ -179,6 +188,8 @@ class DataScanner:
 
         entries: list[MemoryEntry] = []
         for proj_dir in PROJECTS_DIR.iterdir():
+            if _is_excluded(proj_dir.name):
+                continue
             mem_dir = proj_dir / "memory"
             if not mem_dir.is_dir():
                 continue
@@ -282,6 +293,8 @@ class DataScanner:
 
         if PROJECTS_DIR.exists():
             for proj_dir in PROJECTS_DIR.iterdir():
+                if _is_excluded(proj_dir.name):
+                    continue
                 claude_md = proj_dir / "CLAUDE.md"
                 if claude_md.exists():
                     try:
