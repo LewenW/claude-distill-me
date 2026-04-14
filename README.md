@@ -1,143 +1,99 @@
 # Plus-Me
 
-**Distill your Claude data into a personal skill that makes Claude work like a more professional version of you.**
-
-Plus-Me is a [Cowork](https://claude.ai/cowork) / Claude Code plugin that automatically learns your behavioral patterns from your Claude session history, memory files, and CLAUDE.md rules — then fuses them with industry best practices to generate a personal SKILL.md.
+Cowork/Claude Code plugin that distills your behavioral patterns from Claude data into a personal SKILL.md.
 
 ## What It Does
 
+Scans your local Claude data (session logs, memory files, CLAUDE.md, memory-bridge namespaces, claude.ai exports). Extracts how you make decisions, communicate, and prioritize. Optionally fuses with role-specific best practices (PM, etc.). Outputs a `SKILL.md` that auto-loads in future sessions.
+
 ```
-Your Claude Data          Pattern Extraction        Personal Skill
-┌─────────────────┐      ┌──────────────────┐      ┌──────────────────┐
-│ Session logs     │      │ Judgment patterns │      │                  │
-│ Memory files     │─────▶│ Communication    │─────▶│ enhanced-self/   │
-│ CLAUDE.md rules  │      │ style            │      │ SKILL.md         │
-│ Shared memories  │      │ Work priorities   │      │                  │
-└─────────────────┘      └──────────────────┘      └──────────────────┘
-         +                                                  +
-  Role Templates ──────────────────────────────────────────▶│
-  (PM, Engineering...)                              Best practices fused
+~/.claude data  →  scan  →  pattern extraction  →  SKILL.md
+                                                      +
+                              role templates  ────────┘
 ```
 
-**Not** a manual about-me config tool. Not a memory system. Not a colleague distiller.
+All processing is local. No data leaves your machine.
 
-Plus-Me reads your existing Claude data (no manual input needed) and learns *how you think* — your decision patterns, communication style, and work priorities.
-
-## Quick Start
-
-### Install as Cowork Plugin
+## Install
 
 ```bash
-# Clone the repo
 git clone https://github.com/LewenW/claude-plus-me.git
-
-# Install in Claude Code (from the plugin directory)
 cd claude-plus-me
 pip install -e .
 ```
 
-Then add to your Claude Code settings or install via the plugin marketplace.
+## Usage
 
-### Usage
+```bash
+/plus-me:distill        # scan → extract patterns → generate skill
+/plus-me:distill pm     # same, with PM best practices fused in
+/plus-me:profile        # view extracted patterns
+/plus-me:import         # import claude.ai exported data
+```
 
-```
-/plus-me:distill        # Run full distillation (scan → extract → generate)
-/plus-me:distill pm     # With PM best practices enhancement
-/plus-me:profile        # View your current extracted patterns
-```
+## Data Sources
+
+| Source | Location | Auto-scanned |
+|--------|----------|:---:|
+| Session logs | `~/.claude/projects/*/*.jsonl` | yes |
+| Memory files | `~/.claude/projects/*/memory/*.md` | yes |
+| CLAUDE.md | `~/.claude/CLAUDE.md` + project-level | yes |
+| memory-bridge | `~/.claude/shared-memory/` | yes |
+| claude.ai exports | plugin `import/` directory | after `/import` |
+
+For richer patterns (especially new users with few sessions), export your claude.ai data:
+Settings → Export Data → place JSON files in the `import/` directory.
+
+## MCP Tools
+
+| Tool | Purpose |
+|------|---------|
+| `scan_user_data()` | Collect data, return analysis prompts |
+| `save_extracted_patterns()` | Write judgment/style/priorities to disk |
+| `generate_personal_skill()` | Build SKILL.md from patterns + role template |
+| `view_profile()` | Read current patterns |
 
 ## How It Works
 
-1. **Scan** — Reads your `~/.claude/projects/` session logs (JSONL), memory files, and CLAUDE.md rules
-2. **Extract** — Claude analyzes the data to identify your judgment patterns, communication style, and work priorities
-3. **Fuse** — Merges your patterns with industry best practices (optional role template)
-4. **Generate** — Outputs `skills/enhanced-self/SKILL.md` that auto-loads in future sessions
+1. **Scanner** reads `~/.claude` — session JSONL, memory markdown, CLAUDE.md, memory-bridge namespaces, claude.ai exports
+2. **Extractor** prepares data summaries and analysis prompts
+3. **Claude** analyzes the data inline (no separate ML model)
+4. **Generator** merges extracted patterns with role templates into a SKILL.md
 
-All processing is 100% local. No data leaves your machine.
+The extractor prepares; Claude analyzes; the generator assembles.
 
-## Architecture
+## Extracted Patterns
+
+Three categories:
+
+- **Judgment** — decision-making, risk tolerance, trade-off approaches, accept/reject patterns
+- **Style** — message length, language, tone, formatting, correction phrasing
+- **Priorities** — task types, delegation patterns, recurring concerns, tools favored
+
+## Relation to memory-bridge
+
+[memory-bridge](https://github.com/LewenW/claude-memory-bridge) stores and shares memories across projects. Plus-Me reads that data and goes further — it extracts *behavioral patterns* from it.
+
+memory-bridge remembers what you said. Plus-Me learns how you think.
+
+## Structure
 
 ```
-claude-plus-me/
-├── .claude-plugin/plugin.json     # Plugin manifest
-├── .mcp.json                      # MCP server config
-├── commands/
-│   ├── distill.md                 # /plus-me:distill command
-│   └── profile.md                 # /plus-me:profile command
-├── skills/
-│   ├── self-distill/SKILL.md      # Distillation guidance
-│   └── enhanced-self/SKILL.md     # [Generated] Your personal skill
-├── references/
-│   └── role-templates/pm.md       # PM best practices
+├── commands/distill.md, profile.md, import.md
+├── skills/self-distill/, enhanced-self/
+├── references/role-templates/pm.md
 └── src/plus_me/
-    ├── server.py                  # MCP server (4 tools)
-    ├── scanner.py                 # Data collection
-    ├── extractor.py               # Pattern extraction prompts
-    └── generator.py               # SKILL.md generation
+    ├── server.py       # MCP server (4 tools)
+    ├── scanner.py       # data collection
+    ├── extractor.py     # prompt preparation
+    └── generator.py     # SKILL.md assembly
 ```
-
-### MCP Tools
-
-| Tool | Description |
-|------|-------------|
-| `scan_user_data()` | Collect all local Claude data and prepare for analysis |
-| `save_extracted_patterns()` | Save extracted judgment/style/priorities patterns |
-| `generate_personal_skill()` | Generate SKILL.md from patterns + role template |
-| `view_profile()` | View current extracted patterns |
-
-## What Gets Extracted
-
-### Judgment Patterns
-How you make decisions: accept/reject Claude's suggestions, risk tolerance, quality standards, trade-off approaches.
-
-### Communication Style
-How you communicate: message length, language preferences (Chinese/English), tone, formatting, level of detail.
-
-### Work Priorities
-What you focus on: task types, delegation patterns, recurring themes, tools and frameworks you favor.
-
-## Relationship to Memory-Bridge
-
-Plus-Me is designed to work alongside [claude-memory-bridge](https://github.com/LewenW/claude-memory-bridge):
-
-- **memory-bridge** = cross-project memory storage and retrieval
-- **plus-me** = behavioral pattern distillation from that data (and more)
-
-memory-bridge remembers *what you said*. Plus-Me learns *how you think*.
-
-## Role Templates
-
-MVP includes a PM (Product Manager) template. More coming:
-
-- [ ] PM (available)
-- [ ] Engineering
-- [ ] Marketing
-- [ ] Sales
-- [ ] Legal
-- [ ] Custom
-
-## Roadmap
-
-- [x] MVP: Manual `/distill` with session log + memory scanning
-- [ ] Auto-evolution via SessionEnd hook
-- [ ] claude.ai export data import
-- [ ] Gmail/Calendar connector integration
-- [ ] Multi-role template support
-- [ ] Evolution log and pattern drift tracking
-- [ ] Web dashboard for pattern visualization
-
-## Privacy
-
-- 100% local processing — zero network calls
-- All data stays on your machine
-- No telemetry, no cloud dependencies
-- You can inspect every extracted pattern in `output/patterns/`
 
 ## Requirements
 
 - Python 3.10+
-- Claude Code or Cowork
 - `mcp>=1.0.0`
+- Claude Code or Cowork
 
 ## License
 

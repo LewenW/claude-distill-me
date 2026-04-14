@@ -1,47 +1,45 @@
 ---
 name: self-distill
-description: Guides the Plus-Me distillation process. Activates when the user wants to create or update their personal skill, or when Plus-Me tools are used.
+description: Guides Plus-Me distillation. Activates when user wants to create or update their personal skill, or when Plus-Me tools are used.
 version: 0.1.0
 ---
 
-# Plus-Me Self-Distillation Guide
+# Self-Distillation Guide
 
-You have access to Plus-Me, a tool that distills the user's behavioral patterns from their Claude data.
+## When to Suggest
 
-## When to Suggest Distillation
+- User asks to "learn me" or "understand my style"
+- User wants a personal skill or personalized agent
+- User mentions Plus-Me or pattern extraction
+- User asks "how do I usually do X" (suggest distilling first if no profile exists)
 
-- The user asks you to "learn" them or "understand" their style
-- The user wants a personal skill or personalized agent
-- The user mentions Plus-Me or pattern extraction
-- The user asks "how do I usually do X?" (suggest distilling first if no profile exists)
+## Extraction Quality
 
-## Pattern Extraction Guidelines
+When analyzing `scan_user_data()` output, extract patterns that are:
 
-When analyzing user data from `scan_user_data()`, extract patterns that are:
+- **Specific**: "Prefers 3-bullet summaries over paragraphs" not "likes brevity"
+- **Evidence-backed**: Tie each pattern to observed behavior
+- **Actionable**: Each pattern should change Claude's output
+- **Distinctive**: What makes this user different, not universal preferences
 
-1. **Specific**: "User prefers 3-bullet summaries over paragraphs" not "user likes brevity"
-2. **Evidence-backed**: Always tie patterns to observed behavior in the data
-3. **Actionable**: Each pattern should guide how Claude should behave differently
-4. **Distinctive**: Focus on what makes this user unique, not universal preferences
-
-### Judgment Patterns to Look For
-- Accept/reject ratio for Claude's suggestions
-- How they handle ambiguity (ask for clarity vs make assumptions)
-- Risk tolerance (conservative vs aggressive approaches)
+### Judgment — look for:
+- Accept/reject ratio on suggestions
+- Ambiguity handling (asks vs assumes)
+- Risk tolerance (conservative vs aggressive)
 - Quality vs speed trade-offs
 
-### Style Patterns to Look For
-- Language: Chinese, English, or code-switching patterns
-- Message structure: short commands vs detailed briefs
-- Formatting: use of markdown, lists, headers, code blocks
-- Tone: formal, casual, technical, conversational
+### Style — look for:
+- Language: Chinese, English, or code-switching
+- Structure: short commands vs detailed briefs
+- Formatting: markdown, lists, headers, code blocks
+- Tone: formal, casual, technical
 
-### Priority Patterns to Look For
-- Task types they initiate most often
-- What they correct or push back on
-- What they skip or accept without review
+### Priorities — look for:
+- Task types initiated most often
+- What gets corrected or pushed back on
+- What gets skipped or accepted without review
 - Recurring themes across sessions
 
 ## After Distillation
 
-Let the user review the generated patterns and skill. Be open to corrections — user corrections are the highest-quality signal for improving accuracy.
+Let the user review. User corrections are the highest-quality signal.

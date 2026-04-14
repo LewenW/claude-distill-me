@@ -1,34 +1,28 @@
 ---
 name: distill
-description: Scan your Claude data and distill your behavioral patterns into a personal skill
+description: Scan your Claude data and distill behavioral patterns into a personal skill
 argument-hint: "[role]"
 ---
 
-# Plus-Me: Distill Your Personal Skill
+# Distill
 
-Run the full distillation pipeline to create a personal skill from your Claude data.
+Run the full pipeline: scan → extract → generate.
 
 ## Steps
 
-1. **Scan**: Call `scan_user_data()` to collect all local Claude data (session logs, memory files, CLAUDE.md rules).
+1. Call `scan_user_data()`. This collects session logs, memory files, CLAUDE.md, memory-bridge data, and claude.ai exports.
 
-2. **Analyze**: Read through the scan results carefully. Extract three types of patterns from the data:
-   - **Judgment patterns**: How the user makes decisions, evaluates options, accepts/rejects suggestions
-   - **Communication style**: Message length, tone, language, formatting preferences
-   - **Work priorities**: What they focus on, delegate, skip, and care about
+2. Analyze the returned data. Extract three pattern types:
+   - **Judgment** — decisions, accept/reject patterns, risk tolerance, trade-offs
+   - **Style** — message length, tone, language, formatting, correction phrasing
+   - **Priorities** — task types, delegation, recurring concerns, tools favored
 
-   For each pattern, cite specific evidence from the data. Be specific, not generic.
+   Cite evidence. Be specific, not generic. "Prefers 3-bullet summaries" beats "likes brevity".
 
-3. **Save**: Call `save_extracted_patterns()` with the three pattern sections as markdown strings.
+3. Call `save_extracted_patterns()` with three markdown strings.
 
-4. **Generate**: Call `generate_personal_skill()` to create the final SKILL.md.
-   - If the user specified a role (e.g. "pm"), pass it as the `role` parameter
-   - Otherwise, generate a pure pattern-based skill
+4. Call `generate_personal_skill()`. Pass the `role` argument if the user specified one (e.g. "pm").
 
-5. **Report**: Show the user a summary of what was learned. Highlight 3-5 most distinctive patterns. Ask if anything feels off or missing.
+5. Show the user 3-5 most distinctive patterns found. Ask if anything is wrong or missing.
 
-## Notes
-
-- The generated skill will be saved to `skills/enhanced-self/SKILL.md` and auto-loads in future sessions.
-- First run may take a minute to scan all data.
-- User can re-run to update patterns as more data accumulates.
+Output lands in `skills/enhanced-self/SKILL.md`. Re-run anytime to update.

@@ -1,14 +1,16 @@
-"""Scan ~/.claude for user data: session logs, memory files, CLAUDE.md."""
+"""Scan ~/.claude for user data: session logs, memory files, CLAUDE.md, exports."""
 
 from __future__ import annotations
 
 import json
 import re
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from plus_me.config import (
     CLAUDE_HOME,
+    EXPORT_DIR,
     GLOBAL_CLAUDE_MD,
     MAX_MESSAGE_CHARS,
     MAX_SESSIONS,
@@ -16,12 +18,12 @@ from plus_me.config import (
     MAX_TURNS_PER_SESSION,
     PROJECTS_DIR,
     SHARED_MEMORY_DIR,
+    SCAN_DAYS,
 )
 
 
 @dataclass
 class Turn:
-    """A single user-assistant conversation turn."""
     user_message: str
     assistant_message: str
     session_id: str
@@ -31,7 +33,6 @@ class Turn:
 
 @dataclass
 class MemoryEntry:
-    """A parsed memory file."""
     name: str
     description: str
     memory_type: str
@@ -42,21 +43,16 @@ class MemoryEntry:
 
 @dataclass
 class UserData:
-    """All collected user data from Claude ecosystem."""
     turns: list[Turn] = field(default_factory=list)
     memories: list[MemoryEntry] = field(default_factory=list)
     claude_md_rules: list[str] = field(default_factory=list)
     stats: dict = field(default_factory=dict)
 
 
-_FRONTMATTER_RE = re.compile(
-    r"^---\s*\n(.*?)\n---\s*\n",
-    re.DOTALL,
-)
+_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 
 
 def _parse_frontmatter(text: str) -> tuple[dict, str]:
-    """Extract YAML-like frontmatter and body from markdown."""
     m = _FRONTMATTER_RE.match(text)
     if not m:
         return {}, text
@@ -65,26 +61,23 @@ def _parse_frontmatter(text: str) -> tuple[dict, str]:
         if ":" in line:
             key, _, val = line.partition(":")
             meta[key.strip()] = val.strip()
-    body = text[m.end():]
-    return meta, body
+    return meta, text[m.end():]
 
 
 def _truncate(s: str, limit: int = MAX_MESSAGE_CHARS) -> str:
-    return s[:limit] + "..." if len(s) > limit else s
+    if len(s) <= limit:
+        return s
+    return s[:limit] + "..."
 
 
 def _extract_text(content) -> str:
-    """Extract plain text from message content (string or list of blocks)."""
     if isinstance(content, str):
         return content
     if isinstance(content, list):
         parts = []
         for block in content:
-            if isinstance(block, dict):
-                if block.get("type") == "text":
-                    parts.append(block.get("text", ""))
-                elif block.get("type") == "thinking":
-                    pass  # skip internal reasoning
+            if isinstance(block, dict) and block.get("type") == "text":
+                parts.append(block.get("text", ""))
             elif isinstance(block, str):
                 parts.append(block)
         return "\n".join(parts)
@@ -92,22 +85,22 @@ def _extract_text(content) -> str:
 
 
 class DataScanner:
-    """Collects user data from the local Claude ecosystem."""
 
     def scan_sessions(self) -> list[Turn]:
-        """Read JSONL session files and extract conversation turns."""
         if not PROJECTS_DIR.exists():
             return []
 
+        cutoff = time.time() - (SCAN_DAYS * 86400)
         session_files: list[tuple[float, Path, str]] = []
+
         for proj_dir in PROJECTS_DIR.iterdir():
             if not proj_dir.is_dir():
                 continue
-            proj_name = proj_dir.name
             for f in proj_dir.glob("*.jsonl"):
-                session_files.append((f.stat().st_mtime, f, proj_name))
+                mtime = f.stat().st_mtime
+                if mtime >= cutoff:
+                    session_files.append((mtime, f, proj_dir.name))
 
-        # Most recent sessions first
         session_files.sort(key=lambda x: x[0], reverse=True)
         session_files = session_files[:MAX_SESSIONS]
 
@@ -121,7 +114,6 @@ class DataScanner:
         return all_turns[:MAX_TOTAL_TURNS]
 
     def _parse_session(self, fpath: Path, proj_name: str) -> list[Turn]:
-        """Parse a single JSONL session file into turns."""
         turns: list[Turn] = []
         pending_user: dict | None = None
         session_id = fpath.stem
@@ -168,7 +160,6 @@ class DataScanner:
         return turns
 
     def scan_memories(self) -> list[MemoryEntry]:
-        """Read memory/*.md files across all projects."""
         if not PROJECTS_DIR.exists():
             return []
 
@@ -179,27 +170,116 @@ class DataScanner:
                 continue
             for md_file in mem_dir.glob("*.md"):
                 if md_file.name == "MEMORY.md":
-                    continue  # skip index
+                    continue
                 entry = self._parse_memory(md_file)
                 if entry:
                     entries.append(entry)
 
-        # Also scan shared memory
-        if SHARED_MEMORY_DIR.exists():
-            for ns_dir in SHARED_MEMORY_DIR.iterdir():
-                if not ns_dir.is_dir():
+        return entries
+
+    def scan_memory_bridge(self) -> list[MemoryEntry]:
+        """Read shared memories from memory-bridge namespaces."""
+        if not SHARED_MEMORY_DIR.exists():
+            return []
+
+        entries: list[MemoryEntry] = []
+        for ns_dir in SHARED_MEMORY_DIR.iterdir():
+            if not ns_dir.is_dir():
+                continue
+            for md_file in ns_dir.glob("*.md"):
+                if md_file.name == "MEMORY.md":
                     continue
-                for md_file in ns_dir.glob("*.md"):
-                    if md_file.name == "MEMORY.md":
-                        continue
-                    entry = self._parse_memory(md_file)
-                    if entry:
-                        entries.append(entry)
+                entry = self._parse_memory(md_file)
+                if entry:
+                    entries.append(entry)
 
         return entries
 
+    def scan_exported_chats(self) -> list[Turn]:
+        """Read claude.ai exported JSON from the plugin's import/ directory."""
+        if not EXPORT_DIR.exists():
+            return []
+
+        turns: list[Turn] = []
+        for json_file in sorted(EXPORT_DIR.glob("*.json"), reverse=True):
+            try:
+                data = json.loads(json_file.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                continue
+
+            chat_turns = self._parse_export_file(data, json_file.stem)
+            turns.extend(chat_turns)
+
+        return turns[:MAX_TOTAL_TURNS]
+
+    def _parse_export_file(self, data: list | dict, source: str) -> list[Turn]:
+        """Parse a claude.ai export JSON. Handles both single-chat and multi-chat formats."""
+        turns: list[Turn] = []
+        conversations = data if isinstance(data, list) else [data]
+
+        for convo in conversations:
+            if not isinstance(convo, dict):
+                continue
+            messages = convo.get("chat_messages", [])
+            pending_user = None
+
+            for msg in messages:
+                sender = msg.get("sender", "")
+                text = msg.get("text", "")
+                if not text:
+                    # some exports nest content in a list
+                    content = msg.get("content", [])
+                    if isinstance(content, list):
+                        text = " ".join(
+                            c.get("text", "") for c in content
+                            if isinstance(c, dict) and c.get("type") == "text"
+                        )
+
+                if not text.strip():
+                    continue
+
+                if sender == "human":
+                    pending_user = {
+                        "text": text,
+                        "timestamp": msg.get("created_at", ""),
+                    }
+                elif sender == "assistant" and pending_user:
+                    turns.append(Turn(
+                        user_message=_truncate(pending_user["text"]),
+                        assistant_message=_truncate(text),
+                        session_id=source,
+                        project="claude.ai-export",
+                        timestamp=pending_user["timestamp"],
+                    ))
+                    pending_user = None
+
+        return turns
+
+    def scan_claude_md(self) -> list[str]:
+        rules: list[str] = []
+
+        if GLOBAL_CLAUDE_MD.exists():
+            try:
+                text = GLOBAL_CLAUDE_MD.read_text(encoding="utf-8")
+                if text.strip():
+                    rules.append(f"[Global CLAUDE.md]\n{text.strip()}")
+            except OSError:
+                pass
+
+        if PROJECTS_DIR.exists():
+            for proj_dir in PROJECTS_DIR.iterdir():
+                claude_md = proj_dir / "CLAUDE.md"
+                if claude_md.exists():
+                    try:
+                        text = claude_md.read_text(encoding="utf-8")
+                        if text.strip():
+                            rules.append(f"[{proj_dir.name}/CLAUDE.md]\n{text.strip()}")
+                    except OSError:
+                        pass
+
+        return rules
+
     def _parse_memory(self, fpath: Path) -> MemoryEntry | None:
-        """Parse a single memory markdown file."""
         try:
             text = fpath.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
@@ -221,49 +301,29 @@ class DataScanner:
             source_path=str(fpath),
         )
 
-    def scan_claude_md(self) -> list[str]:
-        """Read global and project-level CLAUDE.md files."""
-        rules: list[str] = []
-
-        # Global CLAUDE.md
-        if GLOBAL_CLAUDE_MD.exists():
-            try:
-                text = GLOBAL_CLAUDE_MD.read_text(encoding="utf-8")
-                if text.strip():
-                    rules.append(f"[Global CLAUDE.md]\n{text.strip()}")
-            except OSError:
-                pass
-
-        # Project-level CLAUDE.md files
-        if PROJECTS_DIR.exists():
-            for proj_dir in PROJECTS_DIR.iterdir():
-                claude_md = proj_dir / "CLAUDE.md"
-                if claude_md.exists():
-                    try:
-                        text = claude_md.read_text(encoding="utf-8")
-                        if text.strip():
-                            rules.append(f"[{proj_dir.name}/CLAUDE.md]\n{text.strip()}")
-                    except OSError:
-                        pass
-
-        return rules
-
     def collect_all(self) -> UserData:
-        """Run all scanners and return combined user data."""
         turns = self.scan_sessions()
+        exported_turns = self.scan_exported_chats()
         memories = self.scan_memories()
+        bridge_memories = self.scan_memory_bridge()
         rules = self.scan_claude_md()
 
-        projects = {t.project for t in turns}
-        sessions = {t.session_id for t in turns}
+        all_turns = turns + exported_turns
+        all_memories = memories + bridge_memories
+        projects = {t.project for t in all_turns}
+        sessions = {t.session_id for t in all_turns}
 
         return UserData(
-            turns=turns,
-            memories=memories,
+            turns=all_turns[:MAX_TOTAL_TURNS],
+            memories=all_memories,
             claude_md_rules=rules,
             stats={
-                "total_turns": len(turns),
-                "total_memories": len(memories),
+                "total_turns": len(all_turns[:MAX_TOTAL_TURNS]),
+                "session_turns": len(turns),
+                "exported_turns": len(exported_turns),
+                "total_memories": len(all_memories),
+                "project_memories": len(memories),
+                "bridge_memories": len(bridge_memories),
                 "total_rules": len(rules),
                 "projects_scanned": len(projects),
                 "sessions_scanned": len(sessions),
