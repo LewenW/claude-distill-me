@@ -7,7 +7,7 @@ from mcp.server.fastmcp import FastMCP
 from distill_me.scanner import DataScanner
 from distill_me.extractor import prepare_for_analysis
 from distill_me.generator import (
-    _strip_frontmatter,
+    strip_frontmatter,
     available_roles,
     generate_skill,
     inject_into_claude_md,
@@ -36,21 +36,7 @@ generate_personal_skill().
 mcp = FastMCP("distill-me", instructions=_INSTRUCTIONS)
 
 
-def _safe(fn):
-    import functools
-
-    @functools.wraps(fn)
-    def wrapper(*args, **kwargs):
-        try:
-            return fn(*args, **kwargs)
-        except Exception as e:
-            return f"Error in {fn.__name__}: {type(e).__name__}: {e}"
-
-    return wrapper
-
-
 @mcp.tool()
-@_safe
 def scan_user_data() -> str:
     """Scan local Claude data for deep behavioral analysis.
 
@@ -99,7 +85,6 @@ def scan_user_data() -> str:
 
 
 @mcp.tool()
-@_safe
 def save_extracted_patterns(
     judgment: str,
     style: str,
@@ -118,7 +103,6 @@ def save_extracted_patterns(
 
 
 @mcp.tool()
-@_safe
 def generate_personal_skill(
     role: str = "",
     custom_instructions: str = "",
@@ -135,9 +119,9 @@ def generate_personal_skill(
     if not patterns:
         return "No patterns found. Run scan_user_data() and save_extracted_patterns() first."
 
-    judgment = _strip_frontmatter(patterns.get("judgment", ""))
-    style = _strip_frontmatter(patterns.get("style", ""))
-    priorities = _strip_frontmatter(patterns.get("priorities", ""))
+    judgment = strip_frontmatter(patterns.get("judgment", ""))
+    style = strip_frontmatter(patterns.get("style", ""))
+    priorities = strip_frontmatter(patterns.get("priorities", ""))
 
     roles = available_roles()
     role_arg = None

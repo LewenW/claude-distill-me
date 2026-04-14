@@ -22,7 +22,7 @@ Layer 3: Contrastive    — what makes you DIFFERENT from most people
 
 Output goes to `~/.claude/CLAUDE.md` (loads everywhere) and the plugin's `skills/enhanced-self/SKILL.md`.
 
-All processing is local. No data leaves your machine.
+Scanned data stays on disk. Analysis is done by Claude (via API), same as any Claude Code session.
 
 ## Install
 

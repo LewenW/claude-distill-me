@@ -19,7 +19,7 @@ def _ensure_dir(p: Path) -> None:
     p.mkdir(parents=True, exist_ok=True)
 
 
-def _strip_frontmatter(text: str) -> str:
+def strip_frontmatter(text: str) -> str:
     if text.startswith("---"):
         parts = text.split("---", 2)
         if len(parts) >= 3:
@@ -178,7 +178,7 @@ def inject_into_claude_md(skill_content: str) -> str:
     Updates the marked section if it already exists. Preserves all other content.
     """
     _backup_claude_md()
-    stripped = _strip_frontmatter(skill_content)
+    stripped = strip_frontmatter(skill_content)
     injection = f"{CLAUDE_MD_START}\n{stripped}\n{CLAUDE_MD_END}"
 
     if GLOBAL_CLAUDE_MD.exists():
@@ -186,7 +186,7 @@ def inject_into_claude_md(skill_content: str) -> str:
         start_idx = existing.find(CLAUDE_MD_START)
         end_idx = existing.find(CLAUDE_MD_END)
 
-        if start_idx != -1 and end_idx != -1:
+        if start_idx != -1 and end_idx != -1 and start_idx < end_idx:
             new_content = (
                 existing[:start_idx]
                 + injection

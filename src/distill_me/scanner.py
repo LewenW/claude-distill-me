@@ -51,6 +51,13 @@ class UserData:
 
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
+_SYSTEM_REMINDER_RE = re.compile(r"<system-reminder>.*?</system-reminder>", re.DOTALL)
+
+# Common parent dirs for decoding encoded project paths
+_PATH_MARKERS = (
+    "-Desktop-", "-Documents-", "-repos-", "-Projects-",
+    "-projects-", "-code-", "-src-", "-workspace-",
+)
 
 
 def _parse_frontmatter(text: str) -> tuple[dict, str]:
@@ -71,14 +78,24 @@ def _truncate(s: str, limit: int = MAX_MESSAGE_CHARS) -> str:
     return s[:limit] + "..."
 
 
-def _extract_text(content, role: str = "user") -> str:
+def _is_tool_message(content) -> bool:
+    """Check if message content is tool results/calls, not real user input."""
+    if not isinstance(content, list):
+        return False
+    return any(
+        isinstance(b, dict) and b.get("type") in ("tool_result", "tool_use")
+        for b in content
+    )
+
+
+def _extract_text(content) -> str:
     """Extract readable text from message content blocks.
 
-    Assistant tool_use/tool_result blocks collapse to a count
-    to reduce noise in pattern analysis.
+    Tool_use/tool_result blocks collapse to a count.
+    System-reminder tags are stripped.
     """
     if isinstance(content, str):
-        return content
+        return _SYSTEM_REMINDER_RE.sub("", content)
     if isinstance(content, list):
         parts = []
         tool_count = 0
@@ -88,7 +105,10 @@ def _extract_text(content, role: str = "user") -> str:
             elif not isinstance(block, dict):
                 continue
             elif block.get("type") == "text":
-                parts.append(block.get("text", ""))
+                text = block.get("text", "")
+                text = _SYSTEM_REMINDER_RE.sub("", text)
+                if text.strip():
+                    parts.append(text)
             elif block.get("type") in ("tool_use", "tool_result"):
                 tool_count += 1
         if tool_count:
@@ -101,7 +121,7 @@ def _strip_distill_section(text: str) -> str:
     """Remove distill-me's own output to prevent feedback loops on re-distill."""
     start = text.find(CLAUDE_MD_START)
     end = text.find(CLAUDE_MD_END)
-    if start != -1 and end != -1:
+    if start != -1 and end != -1 and start < end:
         return text[:start] + text[end + len(CLAUDE_MD_END):]
     return text
 
@@ -109,7 +129,19 @@ def _strip_distill_section(text: str) -> str:
 def _is_excluded(dir_name: str) -> bool:
     if not EXCLUDE_PROJECTS:
         return False
-    return any(excl in dir_name for excl in EXCLUDE_PROJECTS)
+    return dir_name in EXCLUDE_PROJECTS
+
+
+def _decode_project_name(encoded: str) -> str:
+    """Best-effort: extract project name from encoded directory path.
+
+    -Users-bob-Desktop-my-project → my-project
+    """
+    for marker in _PATH_MARKERS:
+        idx = encoded.rfind(marker)
+        if idx != -1:
+            return encoded[idx + len(marker):]
+    return encoded
 
 
 class DataScanner:
@@ -127,7 +159,10 @@ class DataScanner:
             if _is_excluded(proj_dir.name):
                 continue
             for f in proj_dir.glob("*.jsonl"):
-                mtime = f.stat().st_mtime
+                try:
+                    mtime = f.stat().st_mtime
+                except OSError:
+                    continue
                 if mtime >= cutoff:
                     session_files.append((mtime, f, proj_dir.name))
 
@@ -147,6 +182,7 @@ class DataScanner:
         turns: list[Turn] = []
         pending_user: dict | None = None
         session_id = fpath.stem
+        readable_project = _decode_project_name(proj_name)
 
         try:
             with open(fpath, encoding="utf-8") as f:
@@ -159,11 +195,19 @@ class DataScanner:
                     except json.JSONDecodeError:
                         continue
 
+                    # Skip subagent conversations
+                    if event.get("isSidechain"):
+                        continue
+
                     evt_type = event.get("type")
                     msg = event.get("message", {})
 
                     if evt_type == "user" and msg.get("role") == "user":
-                        text = _extract_text(msg.get("content", ""))
+                        content = msg.get("content", "")
+                        # Skip tool result events masquerading as user messages
+                        if _is_tool_message(content):
+                            continue
+                        text = _extract_text(content)
                         if text.strip():
                             pending_user = {
                                 "text": text,
@@ -177,14 +221,14 @@ class DataScanner:
                                 user_message=_truncate(pending_user["text"]),
                                 assistant_message=_truncate(text),
                                 session_id=session_id,
-                                project=proj_name,
+                                project=readable_project,
                                 timestamp=pending_user["timestamp"],
                             ))
                             pending_user = None
 
                     if len(turns) >= MAX_TURNS_PER_SESSION:
                         break
-        except (OSError, PermissionError):
+        except (OSError, PermissionError, UnicodeDecodeError):
             pass
 
         return turns

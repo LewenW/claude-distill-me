@@ -6,6 +6,4 @@ build/
 .env
 .DS_Store
 .claude/
-output/patterns/*.md
-output/patterns-backups/
 skills/enhanced-self/SKILL.md
