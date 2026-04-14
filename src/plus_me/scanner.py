@@ -71,15 +71,29 @@ def _truncate(s: str, limit: int = MAX_MESSAGE_CHARS) -> str:
 
 
 def _extract_text(content) -> str:
+    """Extract readable text from message content blocks.
+
+    Handles text, tool_use (name + truncated input), and tool_result blocks.
+    Skips thinking blocks — they're internal model reasoning.
+    """
     if isinstance(content, str):
         return content
     if isinstance(content, list):
         parts = []
         for block in content:
-            if isinstance(block, dict) and block.get("type") == "text":
-                parts.append(block.get("text", ""))
-            elif isinstance(block, str):
+            if isinstance(block, str):
                 parts.append(block)
+            elif not isinstance(block, dict):
+                continue
+            elif block.get("type") == "text":
+                parts.append(block.get("text", ""))
+            elif block.get("type") == "tool_use":
+                name = block.get("name", "")
+                inp = str(block.get("input", ""))[:200]
+                parts.append(f"[tool: {name}({inp})]")
+            elif block.get("type") == "tool_result":
+                res = str(block.get("content", ""))[:200]
+                parts.append(f"[result: {res}]")
         return "\n".join(parts)
     return str(content)
 

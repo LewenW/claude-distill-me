@@ -26,7 +26,7 @@ def main() -> int:
         msg += f" ({pruned} stale items pruned.)"
     if stats["total"] >= 10:
         msg += " Run /plus-me:distill to synthesize."
-    print(msg)
+    print(msg, file=sys.stderr)
     return 0
 
 

@@ -35,7 +35,22 @@ generate_personal_skill().
 mcp = FastMCP("plus-me", instructions=_INSTRUCTIONS)
 
 
+def _safe(fn):
+    """Wrap MCP tool to return error string instead of raw traceback."""
+    import functools
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as e:
+            return f"Error in {fn.__name__}: {type(e).__name__}: {e}"
+
+    return wrapper
+
+
 @mcp.tool()
+@_safe
 def scan_user_data() -> str:
     """Scan local Claude data + learning queue for pattern analysis.
 
@@ -76,13 +91,14 @@ def scan_user_data() -> str:
         f"**{len(all_queued)}** queued learnings\n\n"
         f"---\n\n"
         f"{queue_section}"
-        f"Analyze ALL data below (including queued learnings — these are "
-        f"high-signal corrections and preferences captured in real-time). "
+        f"Analyze ALL the Collected Data below. "
         f"Extract three pattern categories. Be specific and evidence-backed.\n\n"
         f"For each pattern, use this format:\n"
         f"- **Pattern**: [concise statement]\n"
         f"- **Evidence**: [specific example from the data]\n"
         f"- **Confidence**: high/medium/low\n\n"
+        f"{bundle.data_summary}\n\n"
+        f"---\n\n"
         f"## 1. Judgment Patterns\n\n{bundle.judgment_prompt}\n\n"
         f"## 2. Communication Style\n\n{bundle.style_prompt}\n\n"
         f"## 3. Work Priorities\n\n{bundle.priorities_prompt}\n"
@@ -90,6 +106,7 @@ def scan_user_data() -> str:
 
 
 @mcp.tool()
+@_safe
 def save_extracted_patterns(
     judgment: str,
     style: str,
@@ -108,6 +125,7 @@ def save_extracted_patterns(
 
 
 @mcp.tool()
+@_safe
 def generate_personal_skill(
     role: str = "",
     custom_instructions: str = "",
@@ -146,6 +164,7 @@ def generate_personal_skill(
 
 
 @mcp.tool()
+@_safe
 def view_profile() -> str:
     """View current extracted patterns and learning queue stats."""
     patterns = read_patterns()
@@ -182,6 +201,7 @@ def view_profile() -> str:
 
 
 @mcp.tool()
+@_safe
 def view_queue() -> str:
     """View the real-time learning queue (captured corrections, preferences, feedback)."""
     all_items: list[dict] = []
@@ -220,6 +240,7 @@ def _format_queue(items: list[dict]) -> str:
         eff = effective_confidence(item)
         msg = item.get("message", "")
         obs = item.get("observations", 1)
+        msg = msg[:300]
         obs_tag = f" (seen {obs}×)" if obs > 1 else ""
         lines.append(f"- **[{ltype}, {eff:.0%}]** {msg}{obs_tag}")
     lines.append("\n---\n")
@@ -227,11 +248,15 @@ def _format_queue(items: list[dict]) -> str:
 
 
 def _scan_project_dirs() -> list[str]:
-    """Get list of project directories that might have queues."""
+    """Get list of project directories that might have queues.
+
+    Returns directory *names* (already-encoded), not full paths.
+    This avoids double-encoding when passed to _queue_path.
+    """
     from plus_me.config import PROJECTS_DIR
     if not PROJECTS_DIR.exists():
         return []
-    return [str(d) for d in PROJECTS_DIR.iterdir() if d.is_dir()]
+    return [d.name for d in PROJECTS_DIR.iterdir() if d.is_dir()]
 
 
 def _strip_frontmatter(text: str) -> str:

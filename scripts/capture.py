@@ -32,7 +32,7 @@ def main() -> int:
     append_learning(learning, project_dir)
 
     preview = prompt[:50] + "..." if len(prompt) > 50 else prompt
-    print(f"[plus-me] captured: '{preview}' ({learning.learning_type}, {learning.confidence:.0%})")
+    print(f"[plus-me] captured: '{preview}' ({learning.learning_type}, {learning.confidence:.0%})", file=sys.stderr)
     return 0
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fcntl
 import json
 import re
 from dataclasses import asdict, dataclass, field
@@ -12,14 +13,32 @@ from typing import Optional
 from plus_me.config import CLAUDE_HOME
 
 
+QUEUE_FILENAME = "plus-me-queue.json"
+
+
+def _encode_project_dir(raw_path: str) -> str:
+    """Encode a raw project path to match Claude Code's directory naming.
+
+    Claude Code encodes /Users/bob/my-project as -Users-bob-my-project
+    (replace / with -, keep leading dash, spaces become dashes too).
+    """
+    return raw_path.replace("/", "-").replace(" ", "-")
+
+
 def _queue_path(project_dir: Optional[str] = None) -> Path:
-    """Per-project queue at ~/.claude/projects/<encoded>/plus-me-queue.json."""
+    """Per-project queue at ~/.claude/projects/<encoded>/plus-me-queue.json.
+
+    project_dir can be a raw path (from hooks, e.g. /Users/bob/myproject)
+    or an already-encoded directory name (from scanning, e.g. -Users-bob-myproject).
+    """
     if project_dir:
-        encoded = project_dir.replace("/", "-").lstrip("-")
+        if "/" in project_dir or "\\" in project_dir:
+            encoded = _encode_project_dir(project_dir)
+        else:
+            encoded = project_dir
     else:
         encoded = "_global"
-    path = CLAUDE_HOME / "projects" / encoded / "plus-me-queue.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path = CLAUDE_HOME / "projects" / encoded / QUEUE_FILENAME
     return path
 
 
@@ -259,20 +278,44 @@ def detect_learning(text: str) -> Optional[Learning]:
 
 
 def effective_confidence(item: dict) -> float:
-    """Compute confidence adjusted for age. Items decay toward 0 over decay_days."""
+    """Compute confidence adjusted for age and observation count.
+
+    Repeated observations extend the effective decay period — a signal
+    seen 5 times decays much slower than one seen once.
+    """
     base = item.get("confidence", 0.5)
     decay_days = item.get("decay_days", 90)
+    observations = item.get("observations", 1)
     ts = item.get("timestamp", "")
     if not ts or decay_days <= 0:
         return base
     try:
         created = datetime.fromisoformat(ts)
         age = (datetime.now(timezone.utc) - created).days
-        if age >= decay_days:
+        adjusted_decay = decay_days * (1 + 0.3 * (observations - 1))
+        if age >= adjusted_decay:
             return 0.0
-        return base * (1 - age / decay_days)
+        return base * (1 - age / adjusted_decay)
     except (ValueError, TypeError):
         return base
+
+
+def _locked_read_write(path: Path, fn):
+    """Read-modify-write with file lock to prevent race conditions."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = path.with_suffix(".lock")
+    try:
+        with open(lock_path, "w") as lock_f:
+            fcntl.flock(lock_f, fcntl.LOCK_EX)
+            try:
+                items = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+            except (json.JSONDecodeError, OSError):
+                items = []
+            result = fn(items)
+            path.write_text(json.dumps(items, indent=2, ensure_ascii=False), encoding="utf-8")
+            return result
+    except OSError:
+        return fn([])
 
 
 def load_queue(project_dir: Optional[str] = None) -> list[dict]:
@@ -287,6 +330,7 @@ def load_queue(project_dir: Optional[str] = None) -> list[dict]:
 
 def save_queue(items: list[dict], project_dir: Optional[str] = None) -> None:
     path = _queue_path(project_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(items, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
@@ -302,26 +346,24 @@ def _is_duplicate(existing: dict, new: Learning) -> bool:
 def append_learning(learning: Learning, project_dir: Optional[str] = None) -> None:
     learning.timestamp = datetime.now(timezone.utc).isoformat()
     learning.project = project_dir or ""
-    items = load_queue(project_dir)
+    path = _queue_path(project_dir)
 
-    # Merge with existing duplicate: boost confidence, refresh timestamp
-    for item in items:
-        if _is_duplicate(item, learning):
-            observations = item.get("observations", 1) + 1
-            item["confidence"] = min(0.95, item["confidence"] + 0.05)
-            item["timestamp"] = learning.timestamp
-            item["observations"] = observations
-            item["message"] = learning.message  # keep latest wording
-            save_queue(items, project_dir)
-            return
+    def _append(items: list[dict]) -> None:
+        for item in items:
+            if _is_duplicate(item, learning):
+                item["observations"] = item.get("observations", 1) + 1
+                item["confidence"] = min(0.95, item["confidence"] + 0.05)
+                item["timestamp"] = learning.timestamp
+                item["message"] = learning.message
+                return
+        new_item = asdict(learning)
+        new_item["observations"] = 1
+        items.append(new_item)
+        if len(items) > MAX_QUEUE_SIZE:
+            items.sort(key=effective_confidence)
+            del items[: len(items) - MAX_QUEUE_SIZE]
 
-    new_item = asdict(learning)
-    new_item["observations"] = 1
-    items.append(new_item)
-    if len(items) > MAX_QUEUE_SIZE:
-        items.sort(key=effective_confidence)
-        items = items[len(items) - MAX_QUEUE_SIZE :]
-    save_queue(items, project_dir)
+    _locked_read_write(path, _append)
 
 
 def prune_stale(project_dir: Optional[str] = None) -> int:

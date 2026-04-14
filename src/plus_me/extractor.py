@@ -35,7 +35,10 @@ def _format_memories(data: UserData) -> str:
             lines.append(f"Description: {mem.description}")
         if mem.tags:
             lines.append(f"Tags: {', '.join(mem.tags)}")
-        lines.append(mem.content[:500])
+        content = mem.content[:500]
+        if len(mem.content) > 500:
+            content += " [...]"
+        lines.append(content)
         lines.append("")
     return "\n".join(lines)
 
@@ -64,8 +67,11 @@ def prepare_for_analysis(data: UserData) -> AnalysisBundle:
         f"### CLAUDE.md Rules\n\n{rules_text}"
     )
 
+    # Prompts reference the data by section header — the data is included
+    # once in the server's scan_user_data() output, not repeated per prompt.
     judgment_prompt = (
-        "Extract this user's **decision-making and judgment patterns**.\n\n"
+        "Extract this user's **decision-making and judgment patterns** "
+        "from the Collected Data above.\n\n"
         "Go beyond surface preferences. Look for HOW they think:\n"
         "- When presented with options, how do they choose? (data-driven? gut? "
         "speed-first? quality-first?)\n"
@@ -83,12 +89,12 @@ def prepare_for_analysis(data: UserData) -> AnalysisBundle:
         "- **Evidence**: [direct quote or specific example from the data]\n"
         "- **Confidence**: high/medium/low\n\n"
         "Aim for 8-15 patterns. Every pattern must be specific enough that "
-        "another person reading it would change their behavior.\n\n"
-        f"{data_summary}"
+        "another person reading it would change their behavior."
     )
 
     style_prompt = (
-        "Extract this user's **communication and output style**.\n\n"
+        "Extract this user's **communication and output style** "
+        "from the Collected Data above.\n\n"
         "Look for patterns that would let you replicate their voice:\n"
         "- Message length distribution — are they a 2-word person or "
         "paragraph-writer?\n"
@@ -103,12 +109,12 @@ def prepare_for_analysis(data: UserData) -> AnalysisBundle:
         "- How they request work — short commands ('推') vs detailed briefs?\n"
         "- Response expectations — do they want summaries or just action?\n\n"
         "Include direct quotes. Patterns should be specific enough to "
-        "reproduce the user's voice in writing.\n\n"
-        f"{data_summary}"
+        "reproduce the user's voice in writing."
     )
 
     priorities_prompt = (
-        "Extract this user's **work priorities and focus areas**.\n\n"
+        "Extract this user's **work priorities and focus areas** "
+        "from the Collected Data above.\n\n"
         "Look for what drives their decisions day-to-day:\n"
         "- What task types do they initiate most? What do they never start?\n"
         "- What do they delegate to Claude vs do themselves?\n"
@@ -119,8 +125,7 @@ def prepare_for_analysis(data: UserData) -> AnalysisBundle:
         "- What external metrics matter to them (stars, downloads, user "
         "feedback)?\n"
         "- What do they deprioritize or explicitly skip?\n\n"
-        "Group by theme. Each pattern needs evidence.\n\n"
-        f"{data_summary}"
+        "Group by theme. Each pattern needs evidence."
     )
 
     return AnalysisBundle(
