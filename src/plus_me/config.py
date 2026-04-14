@@ -16,6 +16,7 @@ OUTPUT_DIR = PLUGIN_ROOT / "output"
 PATTERNS_DIR = OUTPUT_DIR / "patterns"
 ENHANCED_SKILL_DIR = PLUGIN_ROOT / "skills" / "enhanced-self"
 ROLE_TEMPLATES_DIR = PLUGIN_ROOT / "references" / "role-templates"
+PLUGINS_DIR = CLAUDE_HOME / "plugins"
 EXPORT_DIR = PLUGIN_ROOT / "import"
 
 SCAN_DAYS = 30

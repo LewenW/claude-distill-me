@@ -1,30 +1,68 @@
-"""Generate personal SKILL.md from extracted patterns + role templates."""
+"""Generate personal SKILL.md from extracted patterns + installed skills."""
 
 from __future__ import annotations
 
 from pathlib import Path
 from datetime import datetime, timezone
 
-from plus_me.config import ENHANCED_SKILL_DIR, PATTERNS_DIR, ROLE_TEMPLATES_DIR
+from plus_me.config import ENHANCED_SKILL_DIR, PATTERNS_DIR, PLUGINS_DIR, ROLE_TEMPLATES_DIR
 
 
 def _ensure_dir(p: Path) -> None:
     p.mkdir(parents=True, exist_ok=True)
 
 
+def _strip_frontmatter(text: str) -> str:
+    if text.startswith("---"):
+        parts = text.split("---", 2)
+        if len(parts) >= 3:
+            return parts[2].strip()
+    return text.strip()
+
+
+def scan_installed_skills() -> dict[str, Path]:
+    """Find all installed Cowork plugin skills. Returns {name: path}."""
+    results = {}
+    if not PLUGINS_DIR.exists():
+        return results
+    for skill_md in PLUGINS_DIR.rglob("SKILL.md"):
+        try:
+            first_lines = skill_md.read_text(encoding="utf-8")[:500]
+            for line in first_lines.splitlines():
+                if line.startswith("name:"):
+                    name = line.partition(":")[2].strip()
+                    if name:
+                        results[name] = skill_md
+                    break
+        except OSError:
+            continue
+    return results
+
+
 def load_role_template(role: str) -> str | None:
-    """Load a role template by name. Returns None if not found."""
+    """Load a role template by name — checks built-in templates first,
+    then installed Cowork skills."""
     path = ROLE_TEMPLATES_DIR / f"{role}.md"
     if path.exists():
         return path.read_text(encoding="utf-8")
+
+    installed = scan_installed_skills()
+    for name, skill_path in installed.items():
+        if role.lower() in name.lower():
+            content = skill_path.read_text(encoding="utf-8")
+            return _strip_frontmatter(content)
     return None
 
 
 def available_roles() -> list[str]:
-    """List available role template names."""
-    if not ROLE_TEMPLATES_DIR.exists():
-        return []
-    return [f.stem for f in ROLE_TEMPLATES_DIR.glob("*.md")]
+    """List available role templates + installed Cowork skills."""
+    roles = []
+    if ROLE_TEMPLATES_DIR.exists():
+        roles.extend(f.stem for f in ROLE_TEMPLATES_DIR.glob("*.md"))
+
+    installed = scan_installed_skills()
+    roles.extend(sorted(installed.keys()))
+    return roles
 
 
 def save_patterns(judgment: str, style: str, priorities: str) -> dict:

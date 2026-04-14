@@ -13,6 +13,7 @@ from plus_me.generator import (
     read_patterns,
     save_patterns,
     save_skill,
+    scan_installed_skills,
 )
 
 _INSTRUCTIONS = """\
@@ -130,12 +131,16 @@ def generate_personal_skill(
     role: str = "",
     custom_instructions: str = "",
 ) -> str:
-    """Generate SKILL.md from saved patterns + optional role template.
+    """Generate SKILL.md from saved patterns + optional skill fusion.
 
     Call save_extracted_patterns() first.
 
+    The role parameter matches against both built-in templates and
+    installed Cowork plugin skills. For example, "code-review" would
+    fuse your patterns with the installed code-review skill.
+
     Args:
-        role: Role name for best-practice fusion (e.g. "pm"). Empty for pure distillation.
+        role: Skill to fuse with (e.g. "pm", "code-review", "frontend-design"). Empty for pure distillation.
         custom_instructions: Extra instructions to include.
     """
     patterns = read_patterns()
@@ -147,10 +152,21 @@ def generate_personal_skill(
     priorities = _strip_frontmatter(patterns.get("priorities", ""))
 
     roles = available_roles()
-    if role and role not in roles:
-        return f"Role '{role}' not found. Available: {', '.join(roles) if roles else 'none'}"
+    # Fuzzy match: allow partial name matching
+    role_arg = None
+    if role:
+        if role in roles:
+            role_arg = role
+        else:
+            matches = [r for r in roles if role.lower() in r.lower()]
+            if matches:
+                role_arg = matches[0]
+            else:
+                return (
+                    f"No skill matching '{role}'. Available:\n"
+                    + "\n".join(f"- {r}" for r in roles)
+                )
 
-    role_arg = role if role in roles else None
     skill_content = generate_skill(
         judgment=judgment,
         style=style,
@@ -160,7 +176,7 @@ def generate_personal_skill(
     )
 
     path = save_skill(skill_content)
-    return f"Saved to: {path}\n\nAvailable roles: {', '.join(roles) if roles else 'none'}\n\n---\n\n{skill_content}"
+    return f"Saved to: {path}\n\nAvailable skills for fusion: {', '.join(roles[:20]) if roles else 'none'}\n\n---\n\n{skill_content}"
 
 
 @mcp.tool()
