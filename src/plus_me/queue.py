@@ -278,11 +278,34 @@ def save_queue(items: list[dict], project_dir: Optional[str] = None) -> None:
     path.write_text(json.dumps(items, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+def _is_duplicate(existing: dict, new: Learning) -> bool:
+    """Check if new learning duplicates an existing one (same pattern + type)."""
+    return (
+        existing.get("patterns") == new.patterns
+        and existing.get("learning_type") == new.learning_type
+        and existing.get("patterns")  # empty patterns don't match
+    )
+
+
 def append_learning(learning: Learning, project_dir: Optional[str] = None) -> None:
     learning.timestamp = datetime.now(timezone.utc).isoformat()
     learning.project = project_dir or ""
     items = load_queue(project_dir)
-    items.append(asdict(learning))
+
+    # Merge with existing duplicate: boost confidence, refresh timestamp
+    for item in items:
+        if _is_duplicate(item, learning):
+            observations = item.get("observations", 1) + 1
+            item["confidence"] = min(0.95, item["confidence"] + 0.05)
+            item["timestamp"] = learning.timestamp
+            item["observations"] = observations
+            item["message"] = learning.message  # keep latest wording
+            save_queue(items, project_dir)
+            return
+
+    new_item = asdict(learning)
+    new_item["observations"] = 1
+    items.append(new_item)
     if len(items) > MAX_QUEUE_SIZE:
         items.sort(key=effective_confidence)
         items = items[len(items) - MAX_QUEUE_SIZE :]

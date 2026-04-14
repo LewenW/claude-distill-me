@@ -200,7 +200,9 @@ def view_queue() -> str:
         ltype = item.get("learning_type", "?")
         eff = effective_confidence(item)
         ts = item.get("timestamp", "")[:10]
-        lines.append(f"- [{ltype}] ({eff:.0%}) {msg} — {ts}")
+        obs = item.get("observations", 1)
+        suffix = f" (×{obs})" if obs > 1 else ""
+        lines.append(f"- [{ltype}] ({eff:.0%}) {msg}{suffix} — {ts}")
 
     if len(all_items) > 50:
         lines.append(f"\n... and {len(all_items) - 50} more")
@@ -217,7 +219,9 @@ def _format_queue(items: list[dict]) -> str:
         ltype = item.get("learning_type", "?")
         eff = effective_confidence(item)
         msg = item.get("message", "")
-        lines.append(f"- **[{ltype}, {eff:.0%}]** {msg}")
+        obs = item.get("observations", 1)
+        obs_tag = f" (seen {obs}×)" if obs > 1 else ""
+        lines.append(f"- **[{ltype}, {eff:.0%}]** {msg}{obs_tag}")
     lines.append("\n---\n")
     return "\n".join(lines)
 
