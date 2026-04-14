@@ -38,6 +38,8 @@ class Learning:
 
 
 # --- Detection patterns ---
+# Regex is a fast triage layer for English, Chinese, Japanese, Korean.
+# /distill handles ALL languages via Claude's native understanding.
 
 EXPLICIT_PATTERNS = [
     (r"remember:", "remember", 0.90, 120),
@@ -46,6 +48,8 @@ EXPLICIT_PATTERNS = [
     (r"from now on", "from-now-on", 0.85, 120),
     (r"以后都", "yihou-dou", 0.85, 120),
     (r"记住", "jizhu", 0.90, 120),
+    (r"今後は|これからは", "korekara", 0.85, 120),  # Japanese
+    (r"앞으로는|기억해", "apeuroneun", 0.85, 120),  # Korean
 ]
 
 CORRECTION_PATTERNS = [
@@ -63,6 +67,11 @@ CORRECTION_PATTERNS = [
     (r"^不对", "budui", True),
     (r"^别", "bie", True),
     (r"不是这样", "bushi-zheyang", True),
+    # Japanese
+    (r"^いや[、,. ]|^違う", "iya", True),
+    (r"そうじゃなく", "souja-naku", True),
+    # Korean
+    (r"^아니[,. ]|^틀렸", "ani", True),
 ]
 
 POSITIVE_PATTERNS = [
@@ -70,6 +79,9 @@ POSITIVE_PATTERNS = [
     (r"great approach|nailed it|excellent", "great", 0.70, 90),
     (r"好的|可以的|对的|没错", "hao-de", 0.65, 90),
     (r"就是这样|对对对", "jiushi-zheyang", 0.70, 90),
+    (r"いいね|完璧|その通り", "iine", 0.70, 90),  # Japanese
+    (r"좋아|맞아|완벽", "johah", 0.70, 90),  # Korean
+    (r"👍|💯|🎯", "emoji-positive", 0.65, 90),
 ]
 
 PREFERENCE_PATTERNS = [
@@ -104,10 +116,10 @@ DECISION_PATTERNS = [
 
 FALSE_POSITIVE_PATTERNS = [
     r"[?\uff1f]$",
-    r"[\u55ce\u5417\u5462]$",  # 嗎吗呢
+    r"[\u55ce\u5417\u5462\u304b]$",  # 嗎吗呢か
     r"^(please|can you|could you|would you|help me)\b",
-    r"^(ok|okay|好|行)\s*$",
-    r"^(yes|是的?|对|嗯)\s*$",
+    r"^(ok|okay|好|行|はい|네)\s*$",
+    r"^(yes|是的?|对|嗯|うん|응)\s*$",
 ]
 
 MAX_CAPTURE_LENGTH = 500
@@ -118,7 +130,7 @@ MAX_QUEUE_SIZE = 200
 def detect_learning(text: str) -> Optional[Learning]:
     """Detect if a user message contains a capturable learning signal."""
     stripped = text.strip()
-    if len(stripped) <= 1:
+    if not stripped:
         return None
 
     # Explicit markers always capture

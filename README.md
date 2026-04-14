@@ -1,6 +1,10 @@
 # Plus-Me
 
-Cowork/Claude Code plugin that continuously learns your behavioral patterns and distills them into a personal SKILL.md.
+Distill yourself into a SKILL.md. Learns your judgment, style, and priorities from Claude data.
+
+Skills teach Claude how to do a type of work. Plus-Me teaches Claude how to do work **like you**.
+
+> claude-reflect learns your tool preferences. colleague-skill distills your colleagues. Plus-Me distills **you** — your decision patterns, communication style, and priorities — then fuses them with industry best practices.
 
 ## How It Works
 
@@ -49,20 +53,60 @@ Between `/distill` runs, hooks automatically capture corrections, preferences, a
 | Corrections | "no, use Python not JS" | 70-90% |
 | Explicit markers | "remember: always use type hints" | 90% |
 | Guardrails | "don't add comments unless I ask" | 85-90% |
-| Style feedback | "太啰嗦了 简短一点" | 80% |
+| Style feedback | "too verbose, keep it short" | 80% |
 | Preferences | "I prefer tables over lists" | 75% |
-| Decisions | "let's go with option B" / "就用这个吧" | 65-70% |
-| Positive feedback | "perfect!" / "就是这样" | 70% |
+| Decisions | "let's go with option B" | 65-70% |
+| Positive feedback | "perfect!" | 70% |
 
-Confidence decays over time — stale learnings are pruned automatically.
+Repeated signals merge and boost confidence. Stale learnings decay and get pruned automatically.
 
 ## What Gets Extracted (/distill)
 
 Three pattern categories, each with evidence and confidence:
 
-- **Judgment** — decision-making, risk tolerance, trade-off approaches
+- **Judgment** — decision-making, risk tolerance, trade-off approaches, guardrails
 - **Style** — language, tone, formatting, message length, corrections
 - **Priorities** — task types, delegation, recurring concerns, tools
+
+<details>
+<summary>Example generated SKILL.md (click to expand)</summary>
+
+```markdown
+## Decision-Making & Judgment
+
+- When receiving a bug report, this user wants you to **verify each finding
+  against current code first, then fix only real ones**.
+  Evidence: "很多之前报的 bug 实际上已经在代码中处理了" — they value re-reading
+  code over trusting the report.
+
+- When choosing scope, this user **skips low-impact edge cases and only fixes
+  functional + consistency issues**.
+  Evidence: "Bug 1 和 Bug 3 值得修。其余都是极端边缘情况，不动。"
+
+- When hitting ambiguity, this user **asks for the honest take, not an options
+  menu**. Evidence: 多次问 "你觉得我这个做得好吗" — they want judgment, not
+  the ball kicked back.
+
+## Communication Style
+
+- Primary language: Mandarin Chinese mixed with English technical terms.
+  回复应同样中英混写.
+- Short, casual, direct messages. Typical turns: "推"、"好啦"、"然后呢".
+- Hates AI smell in code and docs. Banned words: "leverage", "utilize",
+  "comprehensive", "robust", "seamless".
+- Expects action, not clarifying questions. "帮我弄吧" means do it now.
+
+## Work Priorities
+
+- Building & shipping Claude ecosystem plugins is the active project line.
+- GitHub discoverability / stars matter — actively researches naming,
+  awesome-list submission, issue commenting.
+- Quality bar: no AI-slop code, no filler comments, functions <30 lines,
+  README readable in 60 seconds.
+- Ship cadence is fast — same-day from spec to GitHub to PyPI.
+```
+
+</details>
 
 ## Data Sources
 
