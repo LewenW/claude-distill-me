@@ -7,6 +7,7 @@ Each layer builds on the previous, extracting increasingly deep patterns.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from distill_me.config import MAX_ANALYSIS_TURNS, MAX_MEMORY_CHARS
 from distill_me.scanner import UserData
 
 
@@ -19,7 +20,7 @@ class AnalysisBundle:
     priorities_prompt: str
 
 
-def _format_turns(data: UserData, max_turns: int = 80) -> str:
+def _format_turns(data: UserData, max_turns: int = MAX_ANALYSIS_TURNS) -> str:
     lines: list[str] = []
     for i, turn in enumerate(data.turns[:max_turns]):
         lines.append(f"--- Turn {i+1} [project: {turn.project}] ---")
@@ -39,8 +40,8 @@ def _format_memories(data: UserData) -> str:
             lines.append(f"Description: {mem.description}")
         if mem.tags:
             lines.append(f"Tags: {', '.join(mem.tags)}")
-        content = mem.content[:500]
-        if len(mem.content) > 500:
+        content = mem.content[:MAX_MEMORY_CHARS]
+        if len(mem.content) > MAX_MEMORY_CHARS:
             content += " [...]"
         lines.append(content)
         lines.append("")

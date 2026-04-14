@@ -11,6 +11,7 @@ from distill_me.config import (
     ENHANCED_SKILL_DIR,
     GLOBAL_CLAUDE_MD,
     PATTERNS_DIR,
+    PLUGINS_DIR,
     ROLE_TEMPLATES_DIR,
 )
 
@@ -27,17 +28,60 @@ def strip_frontmatter(text: str) -> str:
     return text.strip()
 
 
+def _scan_plugin_skills() -> dict[str, Path]:
+    """Scan installed Cowork plugins for SKILL.md files usable as role templates.
+
+    Returns {display_name: skill_path} for each found skill.
+    Skips distill-me's own skills.
+    """
+    if not PLUGINS_DIR.is_dir():
+        return {}
+
+    skills: dict[str, Path] = {}
+    for plugin_dir in PLUGINS_DIR.iterdir():
+        if not plugin_dir.is_dir():
+            continue
+        if plugin_dir.name == "distill-me":
+            continue
+        skills_dir = plugin_dir / "skills"
+        if not skills_dir.is_dir():
+            continue
+        for skill_dir in skills_dir.iterdir():
+            skill_file = skill_dir / "SKILL.md"
+            if skill_file.is_file():
+                name = f"{plugin_dir.name}/{skill_dir.name}"
+                skills[name] = skill_file
+
+    return skills
+
+
 def load_role_template(role: str) -> str | None:
+    """Load a role template. Checks built-in templates first, then installed plugins."""
+    # Built-in templates
     path = ROLE_TEMPLATES_DIR / f"{role}.md"
     if path.exists():
         return path.read_text(encoding="utf-8")
+
+    # Installed plugin skills (match by plugin name or full plugin/skill name)
+    plugin_skills = _scan_plugin_skills()
+    for name, skill_path in plugin_skills.items():
+        if role == name or role == name.split("/")[0]:
+            return skill_path.read_text(encoding="utf-8")
+
     return None
 
 
 def available_roles() -> list[str]:
-    if not ROLE_TEMPLATES_DIR.is_dir():
-        return []
-    return [f.stem for f in ROLE_TEMPLATES_DIR.glob("*.md")]
+    """List all available roles: built-in templates + installed plugin skills."""
+    roles: list[str] = []
+
+    if ROLE_TEMPLATES_DIR.is_dir():
+        roles.extend(f.stem for f in ROLE_TEMPLATES_DIR.glob("*.md"))
+
+    plugin_skills = _scan_plugin_skills()
+    roles.extend(plugin_skills.keys())
+
+    return roles
 
 
 def _backup_patterns() -> Path | None:
@@ -112,8 +156,9 @@ def generate_skill(
     if role:
         template = load_role_template(role)
         if template:
+            display = role.upper().replace("/", " / ")
             role_section = (
-                f"\n## Role Enhancement: {role.upper()}\n\n"
+                f"\n## Role Enhancement: {display}\n\n"
                 f"Apply these best practices, filtered through the user's "
                 f"personal style above. Personal patterns take priority — "
                 f"adapt the practices to fit the person, not the reverse.\n\n"
@@ -161,7 +206,6 @@ def save_skill(skill_content: str) -> str:
 
 
 def _backup_claude_md() -> Path | None:
-    """Backup ~/.claude/CLAUDE.md before modifying."""
     if not GLOBAL_CLAUDE_MD.exists():
         return None
     ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")

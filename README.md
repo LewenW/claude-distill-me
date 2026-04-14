@@ -101,13 +101,34 @@ Three categories, each with three-layer depth:
 
 ## Role Fusion
 
-Add a role name to fuse your personal patterns with industry best practices:
+Fuse your personal patterns with role-specific best practices:
 
 ```
-/distill-me:distill pm     # PM frameworks filtered through your style
+/distill-me:distill pm                    # built-in PM template
+/distill-me:distill discord/bot-builder   # from installed Cowork plugin
 ```
 
-Personal patterns always take priority. The role template adapts to fit you, not the reverse.
+Two sources of roles:
+1. **Built-in templates** — `references/role-templates/*.md` (ships with PM)
+2. **Installed plugins** — any Cowork plugin in `~/.claude/plugins/` with a SKILL.md
+
+Install a Cowork plugin, and its skills automatically become available as roles. Personal patterns always take priority — the role template adapts to fit you, not the reverse.
+
+## Configuration
+
+All limits are configurable via environment variables:
+
+| Variable | Default | What it controls |
+|----------|---------|-----------------|
+| `DISTILLME_SCAN_DAYS` | 30 | How many days of history to scan |
+| `DISTILLME_MAX_SESSIONS` | 20 | Max session files to read |
+| `DISTILLME_MAX_TOTAL_TURNS` | 100 | Max turns to collect |
+| `DISTILLME_MAX_ANALYSIS_TURNS` | 80 | Turns sent to analysis |
+| `DISTILLME_MAX_MESSAGE_CHARS` | 2000 | Per-message truncation |
+| `DISTILLME_MAX_MEMORY_CHARS` | 1000 | Per-memory truncation |
+| `DISTILLME_EXCLUDE_PROJECTS` | (none) | Comma-separated project names to skip |
+
+Set them in your `.mcp.json` env block or shell profile.
 
 ## Data Sources
 
