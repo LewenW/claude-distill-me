@@ -72,16 +72,21 @@ def _find_plugin_name(skill_path: Path) -> str:
 
 def load_role_template(role: str) -> str | None:
     """Load a role template by name — checks built-in templates first,
-    then installed Cowork skills."""
+    then installed Cowork skills. Returns None if ambiguous (multiple matches)."""
     path = ROLE_TEMPLATES_DIR / f"{role}.md"
     if path.exists():
         return path.read_text(encoding="utf-8")
 
     installed = scan_installed_skills()
-    for name, skill_path in installed.items():
-        if role.lower() in name.lower():
-            content = skill_path.read_text(encoding="utf-8")
-            return _strip_frontmatter(content)
+    # Exact match first
+    if role in installed:
+        content = installed[role].read_text(encoding="utf-8")
+        return _strip_frontmatter(content)
+    # Fuzzy match — only if exactly one hit
+    matches = [(n, p) for n, p in installed.items() if role.lower() in n.lower()]
+    if len(matches) == 1:
+        content = matches[0][1].read_text(encoding="utf-8")
+        return _strip_frontmatter(content)
     return None
 
 

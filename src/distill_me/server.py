@@ -8,6 +8,7 @@ from distill_me.scanner import DataScanner
 from distill_me.extractor import prepare_for_analysis
 from distill_me.queue import effective_confidence, load_queue, prune_stale, queue_stats
 from distill_me.generator import (
+    _strip_frontmatter,
     available_roles,
     generate_skill,
     read_patterns,
@@ -319,13 +320,6 @@ def _scan_project_dirs() -> list[str]:
         return []
     return [d.name for d in PROJECTS_DIR.iterdir() if d.is_dir()]
 
-
-def _strip_frontmatter(text: str) -> str:
-    if text.startswith("---"):
-        parts = text.split("---", 2)
-        if len(parts) >= 3:
-            return parts[2].strip()
-    return text.strip()
 
 
 def main():

@@ -19,7 +19,7 @@ def _format_turns(data: UserData, max_turns: int = 80, queued_messages: set[str]
     lines: list[str] = []
     for i, turn in enumerate(data.turns[:max_turns]):
         # Skip turns already captured in the learning queue
-        if queued_messages and turn.user_message[:80] in queued_messages:
+        if queued_messages and _msg_key(turn.user_message) in queued_messages:
             continue
         lines.append(f"--- Turn {i+1} [project: {turn.project}] ---")
         lines.append(f"USER: {turn.user_message}")
@@ -52,13 +52,18 @@ def _format_rules(data: UserData) -> str:
     return "\n\n".join(data.claude_md_rules)
 
 
+def _msg_key(msg: str) -> str:
+    """Normalize message for dedup comparison. Strips whitespace, lowercases."""
+    return msg.strip().lower()
+
+
 def prepare_for_analysis(data: UserData, queued_messages: list[str] | None = None) -> AnalysisBundle:
     """Build the data summary and analysis prompts. Claude does the actual extraction.
 
     queued_messages: message strings already in the learning queue.
     Turns matching these are excluded to avoid double-weighting.
     """
-    queued_set = {m[:80] for m in queued_messages} if queued_messages else None
+    queued_set = {_msg_key(m) for m in queued_messages} if queued_messages else None
     turns_text = _format_turns(data, queued_messages=queued_set)
     memories_text = _format_memories(data)
     rules_text = _format_rules(data)

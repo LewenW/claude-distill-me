@@ -151,11 +151,26 @@ Three pattern categories, each with evidence and confidence:
 
 memory-bridge remembers what you said. Distill-Me learns how you think.
 
+## Platform Compatibility
+
+| Component | Claude Code CLI | Desktop Code tab | Cowork |
+|-----------|:-:|:-:|:-:|
+| MCP tools (5) | yes | yes | needs bridge |
+| Real-time hooks | yes | yes | no |
+| `/distill-me:*` commands | yes | yes | yes |
+| SKILL.md output | yes | yes | may not load |
+
+**Best experience: Claude Code CLI or Desktop Code tab.**
+
+Cowork limitations (platform-side, not fixable by this plugin):
+- Hooks don't fire in Cowork VMs — no real-time capture. Use manual `/distill-me:distill` instead.
+- Custom plugin skills may not mount in the VM. Workaround: copy the generated SKILL.md content into `~/.claude/CLAUDE.md`.
+
 ## Requirements
 
 - Python 3.10+
 - `mcp>=1.0.0`
-- Claude Code or Cowork
+- Claude Code (CLI or Desktop)
 
 ## License
 

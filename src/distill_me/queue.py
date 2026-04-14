@@ -20,6 +20,10 @@ def _flock(lock_f, operation):
         fcntl.flock(lock_f, operation)
     except ImportError:
         import msvcrt
+        # msvcrt.locking needs at least 1 byte in the file to lock
+        lock_f.write(" ")
+        lock_f.flush()
+        lock_f.seek(0)
         if operation in (1, 2):  # LOCK_SH, LOCK_EX
             msvcrt.locking(lock_f.fileno(), msvcrt.LK_LOCK, 1)
         else:  # LOCK_UN
