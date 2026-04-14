@@ -16,3 +16,7 @@ distill-me = "distill_me.server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/distill_me"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"references" = "distill_me/references"
+"skills" = "distill_me/skills"

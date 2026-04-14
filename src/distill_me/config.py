@@ -12,13 +12,15 @@ GLOBAL_CLAUDE_MD = CLAUDE_HOME / "CLAUDE.md"
 OUTPUT_DIR = CLAUDE_HOME / "distill-me"
 PATTERNS_DIR = OUTPUT_DIR / "patterns"
 
-# Plugin assets use CLAUDE_PLUGIN_ROOT when available (set by plugin loader),
-# fall back to source tree for development (pip install -e .)
+# Plugin assets: CLAUDE_PLUGIN_ROOT (set by plugin loader) > source tree > bundled in package
 _plugin_root_env = os.environ.get("CLAUDE_PLUGIN_ROOT")
 if _plugin_root_env:
     PLUGIN_ROOT = Path(_plugin_root_env)
 else:
-    PLUGIN_ROOT = Path(__file__).resolve().parent.parent.parent
+    # Works for both `pip install -e .` (source tree) and `pip install .` (site-packages)
+    _source_root = Path(__file__).resolve().parent.parent.parent
+    _has_assets = (_source_root / "references").is_dir()
+    PLUGIN_ROOT = _source_root if _has_assets else Path(__file__).resolve().parent
 
 ENHANCED_SKILL_DIR = PLUGIN_ROOT / "skills" / "enhanced-self"
 ROLE_TEMPLATES_DIR = PLUGIN_ROOT / "references" / "role-templates"

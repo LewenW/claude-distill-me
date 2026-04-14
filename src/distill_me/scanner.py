@@ -56,7 +56,7 @@ _SYSTEM_REMINDER_RE = re.compile(r"<system-reminder>.*?</system-reminder>", re.D
 # Common parent dirs for decoding encoded project paths
 _PATH_MARKERS = (
     "-Desktop-", "-Documents-", "-repos-", "-Projects-",
-    "-projects-", "-code-", "-src-", "-workspace-",
+    "-projects-", "-code-", "-src-", "-workspace-", "-work-",
 )
 
 
@@ -133,9 +133,10 @@ def _is_excluded(dir_name: str) -> bool:
 
 
 def _decode_project_name(encoded: str) -> str:
-    """Best-effort: extract project name from encoded directory path.
+    """Extract project name from encoded directory path.
 
     -Users-bob-Desktop-my-project → my-project
+    -home-user-work-api → api
     """
     for marker in _PATH_MARKERS:
         idx = encoded.rfind(marker)
@@ -293,7 +294,8 @@ class DataScanner:
                     try:
                         text = claude_md.read_text(encoding="utf-8")
                         if text.strip():
-                            rules.append(f"[{proj_dir.name}/CLAUDE.md]\n{text.strip()}")
+                            proj_label = _decode_project_name(proj_dir.name)
+                            rules.append(f"[{proj_label}/CLAUDE.md]\n{text.strip()}")
                     except OSError:
                         pass
 
